@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "test4vul"
+version = "0.1.0"
+requires-python = "~=3.13.0"
+dependencies = [
+    "pydriller~=2.6",
+    "halo~=0.0.31",
+    "gitpython~=3.1.44",
+    "javalang~=0.13.0",
+    "jellyfish~=1.2.1",
+    "tqdm~=4.67.1",
+]
+
+[project.scripts]
+test4vul = "test4vul.cli:main"
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["test4vul*"]
+
+[tool.setuptools.package-data]
+"test4vul" = [
+    "res/test4vul.json"
+]
