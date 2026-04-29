@@ -85,7 +85,7 @@ def find_identifier_type(name: str, class_node: jl.parser.tree.ClassDeclaration,
         for field in class_node.fields:
             for decl in getattr(field, "declarators"):
                 if decl.name == name:
-                    caller_type_name = getattr(field, "type")
+                    caller_type_name = getattr(getattr(field, "type"), "name")
     return caller_type_name
 
 
@@ -118,9 +118,10 @@ def get_invocations(method_node: jl.parser.tree.MethodDeclaration, class_node: j
         nr_args = len(getattr(invocation_node, "arguments"))
         caller_identifier = getattr(invocation_node, "qualifier")  # Can be an empty string
         caller_type_name = find_identifier_type(caller_identifier, class_node, method_node)
-        invocations.append({
+        invocation = {
             "name": invoked_method_name,
             "args": nr_args,
             "type": caller_type_name
-        })
+        }
+        invocations.append(invocation)
     return invocations

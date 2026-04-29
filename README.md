@@ -24,6 +24,7 @@ Each has the following data fields:
 # Key Statistics
 
 |||
+|--|--|
 | Test Methods with 1 matched CVEs | 27 |
 | Test Methods with 2+ matched CVEs | 8 |
 | Test Methods with no matched CVEs | 224 |

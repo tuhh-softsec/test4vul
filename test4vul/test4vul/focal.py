@@ -50,21 +50,19 @@ def measure_focal_relevance(prod_method_signature: str, prod_class_fqn: str, tes
     best_substring = max(lower_test_method_name_substrings, key=lambda x: jellyfish.jaro_similarity(x, prod_method_name.lower()))
     scores["methodNameSimil"] = jellyfish.jaro_similarity(best_substring, prod_method_name.lower())
 
-    scores["invocationNameMatch"] = 0
-    scores["invocationArgsMatch"] = 0
-    scores["invocationTypeMatch"] = 0
-    found_invocation = None
+    invocation_matches = []
     for inv in invocations_in_test:
-        if not found_invocation:
-            # print(f'Checking {inv["name"]} vs {prod_method_name}')
-            arg_count = prod_method_signature.count(",")
-            if arg_count > 0:
-                arg_count += 1
-            # print(f'Checking {inv["args"]} vs {arg_count}')
-            scores["invocationNameMatch"] = int(inv["name"] == prod_method_name)
-            scores["invocationArgsMatch"] = int(inv["args"] == arg_count)
-            found_invocation = inv["type"] == prod_class_name
-            scores["invocationTypeMatch"] = int(found_invocation)
+        arg_count = prod_method_signature.count(",")
+        if arg_count > 0:
+            arg_count += 1
+        matches = {
+            "invocationNameMatch": int(inv["name"] == prod_method_name),
+            "invocationArgsMatch": int(inv["args"] == arg_count),
+            "invocationTypeMatch": int(inv["type"] == prod_class_name)
+        }
+        invocation_matches.append(matches)
+    best_match = max(invocation_matches, key=lambda x: int("".join(map(str, x.values())), 2))
+    scores.update(best_match)
 
     # TODO Other options to consider if needed
     # - Record if, after ignoring invocations to getters, setters and assertions, only the invocation to the production method remains (VERY unlikely, so not really important)
