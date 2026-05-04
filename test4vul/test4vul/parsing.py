@@ -1,3 +1,4 @@
+import re
 from typing import Optional
 
 from tree_sitter import Language, Parser, Node
@@ -189,11 +190,13 @@ def resolve_identifier_simple_type(
     """
     Resolve *name* (an identifier) to its declared type by searching (in order):
       1. Local variable declarations in the method body
-      2. Method parameters
-      3. Class fields
+      2. Catch clause variables (it can be a union type)
+      3. Method parameters
+      4. Class fields
     """
     if name is None:
         return None
+    resolved_type = None
 
     # 1. Local variable declarations
     for local_var_decl in _all_descendants_of_type(method_node, "local_variable_declaration"):
@@ -201,26 +204,40 @@ def resolve_identifier_simple_type(
         if type_node:
             for declarator in _all_descendants_of_type(local_var_decl, "variable_declarator"):
                 if _get_node_name(declarator) == name:
-                    return type_node.text.decode()
+                    resolved_type = type_node.text.decode()
 
-    # 2. Method parameters
-    params_node = method_node.child_by_field_name("parameters")
-    if params_node:
-        for param in _direct_children_of_type(params_node, "formal_parameter"):
-            if _get_node_name(param) == name:
-                type_node = param.child_by_field_name("type")
-                return type_node.text.decode()
+    # 2. Catch clause variables
+    if not resolved_type:
+        for catch_clause in _all_descendants_of_type(method_node, "catch_clause"):
+            for catch_param in _direct_children_of_type(catch_clause, "catch_formal_parameter"):
+                if _get_node_name(catch_param) == name:
+                    for type_node in _direct_children_of_type(catch_param, "catch_type"):
+                        # It might be a union type (e.g., IOException | RuntimeException)
+                        resolved_type = type_node.text.decode()
 
-    # 3. Class fields
-    class_body = class_node.child_by_field_name("body")
-    if class_body:
-        for field_decl in _direct_children_of_type(class_body, "field_declaration"):
-            type_node = field_decl.child_by_field_name("type")
-            if type_node:
-                for declarator in _all_descendants_of_type(field_decl, "variable_declarator"):
-                    if _get_node_name(declarator) == name:
-                        return type_node.text.decode()
+    # 3. Method parameters
+    if not resolved_type:
+        params_node = method_node.child_by_field_name("parameters")
+        if params_node:
+            for param in _direct_children_of_type(params_node, "formal_parameter"):
+                if _get_node_name(param) == name:
+                    type_node = param.child_by_field_name("type")
+                    resolved_type = type_node.text.decode()
 
+    # 4. Class fields
+    if not resolved_type:
+        class_body = class_node.child_by_field_name("body")
+        if class_body:
+            for field_decl in _direct_children_of_type(class_body, "field_declaration"):
+                type_node = field_decl.child_by_field_name("type")
+                if type_node:
+                    for declarator in _all_descendants_of_type(field_decl, "variable_declarator"):
+                        if _get_node_name(declarator) == name:
+                            resolved_type = type_node.text.decode()
+
+    if resolved_type:
+        # Remove type generics, if any
+        return re.sub(r'<[^>]*>', '', resolved_type)
     return None
 
 
@@ -287,27 +304,27 @@ def get_invocations(
         obj_node = invocation_node.child_by_field_name("object")
         caller_identifier = obj_node.text.decode() if obj_node else ""
 
-        if caller_identifier:
+        caller_type_name = None
+        if caller_identifier and obj_node.type == "identifier":
             # Resolve the identifier to a SIMPLE type inside the same class
             caller_type_name = resolve_identifier_simple_type(caller_identifier, class_node, method_node)
-            # If the resolution did not suceeded, it is likely that the caller is a class (i.e., the method is static). So, we use the identifier as the type
-            if caller_type_name is None:
+            
+            # If the resolution did not suceeded, it might be that the caller is a class (i.e., the method is static). If so, we use the identifier as the type
+            if not caller_type_name:
                 caller_type_name = caller_identifier
         else:
-            # We start by searching the method internally (same class)
-            for method_node in _get_method_declarations(class_node):
-                if get_method_name(method_node) == invoked_method_name:
+            # We search the method internally (same class)
+            for local_method_node in _get_method_declarations(class_node):
+                if get_method_name(local_method_node) == invoked_method_name:
                     caller_type_name = get_class_name(class_node)
             
             # If still not found, we search among the static imports
-            if caller_type_name is None:
+            if not caller_type_name:
                 static_imports_map, static_imports_wildcards = _build_static_import_map(class_node)
                 caller_type_name = static_imports_map.get(invoked_method_name)
                 if caller_type_name is not None and "." in caller_type_name:
                     caller_type_name = caller_type_name.rsplit(".", 1)[1]
                 # TODO If not found, should parse all the classes in `static_imports_wildcards` and check if they have a method with name `caller_identifier`. To do so, we need to look into all other classes, so we need to have access to all files. Not urgent for now.
-            
-
         invocations.append({
             "name": invoked_method_name,
             "args": nr_args,
