@@ -1,127 +1,243 @@
 from typing import Optional
 
-import javalang as jl
+from tree_sitter import Language, Parser, Node
+import tree_sitter_java as tsjava
+
+JAVA_LANGUAGE = Language(tsjava.language())
 
 
-def get_method_text_and_pos(method_node: jl.ast.Node, source_text: str):
-    source_tokens = list(jl.tokenizer.tokenize(source_text))
-    brace_count = 0
-    started = False
-    last_tok = None
-    for tok in source_tokens:
-        if tok.position.line < method_node.position.line:
-            continue
-        if isinstance(tok, jl.tokenizer.Separator) and tok.value == '{':
-            brace_count += 1
-            if not started:
-                started = True
-        if isinstance(tok, jl.tokenizer.Separator) and tok.value == '}':
-            brace_count -= 1
-            if started and brace_count == 0:
-                last_tok = tok
-                break
-    if last_tok is None:
-        return "", 0, 0
-    start_pos = method_node.position.line
-    end_pos = last_tok.position.line
-    method_text = "\n".join(source_text.splitlines()[start_pos - 1: end_pos])
-    return method_text, start_pos, end_pos
+def _make_parser() -> Parser:
+    return Parser(JAVA_LANGUAGE)
 
 
-def retrieve_methods_from_class_source(source_code: str, full_info: bool = True, show_errors: bool = True) -> list:
+def _parse(source_code: str) -> Node:
+    """Parse Java source and returns the root_node of the syntax tree"""
+    tree = _make_parser().parse(source_code.encode("utf-8"))
+    return tree.root_node
+
+
+def _direct_children_of_type(node: Node, *type_names: str) -> list[Node]:
+    """Return direct children whose type is in *type_names*."""
+    return [c for c in node.children if c.type in type_names]
+
+
+def _all_descendants_of_type(node: Node, *type_names: str) -> list[Node]:
+    """Depth-first search for all descendant nodes of the given type(s)."""
+    results = []
+    for child in node.children:
+        if child.type in type_names:
+            results.append(child)
+        results.extend(_all_descendants_of_type(child, *type_names))
+    return results
+
+
+def _get_node_name(node: Node) -> str:
+    if node is None:
+        return ""
+    name_node = node.child_by_field_name("name")
+    return name_node.text.decode("utf-8") if name_node is not None else ""
+
+
+def retrieve_methods_of_top_class_from_source(
+    source_code: str,
+    full_info: bool = True,
+    show_errors: bool = True,
+) -> list[tuple]:
+    """
+    Parse *source_code* and return a list of
+    (root_node, class_node, method_node, method_text, start_line, end_line)
+    tuples for every method in every top-level class.
+    """
     methods = []
     try:
-        cu = jl.parse.parse(source_code)
-    except:
+        root = _parse(source_code)
+    except Exception:
         if show_errors:
             print("- Error during parsing")
         return []
-    # types contain only the top level classes
-    for class_node in list(cu.types):
-        if not isinstance(class_node, jl.parser.tree.ClassDeclaration):
+    if root.has_error:
+        if show_errors:
+            print("- Error during parsing")
+        return []
+    for class_node in _direct_children_of_type(root, "class_declaration"):
+        # Method declarations are found inside class bodies
+        class_body = class_node.child_by_field_name("body")
+        if class_body is None:
             continue
-        # for _, method_node in list(class_node.filter(jl.parser.tree.MethodDeclaration)):
-        #    if method_node in class_node.methods:
-        for method_node in class_node.methods:
+        for method_node in _direct_children_of_type(class_body, "method_declaration"):
             if full_info:
-                method_text, start, end = get_method_text_and_pos(method_node, source_code)
+                method_text = method_node.text.decode("utf-8")
                 if method_text == "":
                     continue
+                start = method_node.start_point[0] + 1
+                end = method_node.end_point[0] + 1
                 method_text = method_text.replace("\n\t", "\n").strip()
             else:
                 method_text, start, end = None, None, None
-            methods.append((cu, class_node, method_node, method_text, start, end))
+            methods.append((root, class_node, method_node, method_text, start, end))
     return list(dict.fromkeys(methods))
 
 
-def get_class_fqn(cu, class_node):
-    prefix = f"{cu.package.name}." if cu.package else ""
-    return f"{prefix}{class_node.name}"
+def get_class_fqn(class_node: Node) -> str:
+    """Return the fully-qualified class name, e.g. 'com.example.MyClass'."""
+    prefix = ""
+    root = class_node
+    while root.parent is not None:
+        root = root.parent
+    for package in _direct_children_of_type(root, "package_declaration"):
+        for p_name in _direct_children_of_type(package, "scoped_identifier", "identifier"):
+            prefix += p_name.text.decode()
+            break
+    return f"{prefix}.{_get_node_name(class_node)}"
 
 
-def get_method_signature(method_node: jl.parser.tree.MethodDeclaration) -> str:
-    params = []
-    for p in method_node.parameters:
-        annotations = " ".join(['@' + ann.name for ann in p.annotations]) + " " if p.annotations else ""
-        modifiers = " ".join(p.modifiers) + " " if p.modifiers else ""
-        dimensions = '[]' * len(p.type.dimensions)
-        params.append(f"{annotations}{modifiers}{p.type.name}{dimensions} {p.name}")
-    return method_node.name + "(" + ", ".join(params) + ")"
+def get_method_name(method_node: Node) -> str:
+    return _get_node_name(method_node)
 
 
-def find_identifier_type(name: str, class_node: jl.parser.tree.ClassDeclaration, method_node: jl.parser.tree.MethodDeclaration):
-    if name is None:
-        return None
-    caller_type_name = None
-    for _, var_decl_node in method_node.filter(jl.parser.tree.LocalVariableDeclaration):
-        for decl in getattr(var_decl_node, "declarators"):
-            if decl.name == name:
-                caller_type_name = getattr(getattr(var_decl_node, "type"), "name")
-        if not caller_type_name:
-            for p in getattr(method_node, "parameters"):
-                if p.name == name:
-                    caller_type_name = getattr(getattr(var_decl_node, "type"), "name")
-    if not caller_type_name:
-        for field in class_node.fields:
-            for decl in getattr(field, "declarators"):
-                if decl.name == name:
-                    caller_type_name = getattr(getattr(field, "type"), "name")
-    return caller_type_name
+def get_method_signature(method_node: Node) -> str:
+    """Return a signature string like 'myMethod(int x, String y)'."""
+    params_node = method_node.child_by_field_name("parameters")
+    params: list[str] = []
+    if params_node:
+        for param in _direct_children_of_type(params_node, "formal_parameter", "spread_parameter"):
+            is_varargs = param.type == "spread_parameter"
+
+            annotations = [
+                "@" + _get_node_name(ann)
+                for ann in _direct_children_of_type(param, "marker_annotation", "annotation")
+            ]
+
+            modifiers = [
+                c.text.decode()
+                for c in param.children
+                if c.type == "modifier" or c.text.decode() == "final"
+            ]
+
+            # Types include array dims, e.g. 'int[]', and varargs three dots
+            if is_varargs:
+                gen_type_nodes = _direct_children_of_type(param, "generic_type")
+                if len(gen_type_nodes) > 0:
+                    type_node = gen_type_nodes[0]
+                else:
+                    type_node = [c for c in param.children if "type" in c.type][0]
+                param_ident = _get_node_name(_direct_children_of_type(param, "variable_declarator")[0])
+            else:
+                type_node = param.child_by_field_name("type")
+                param_ident = _get_node_name(param)
+            type_name = (type_node.text.decode() if type_node else "") + ("..." if is_varargs else "")
+
+            ann_str = " ".join(annotations) + " " if annotations else ""
+            mod_str = " ".join(modifiers) + " " if modifiers else ""
+            params.append(f"{ann_str}{mod_str}{type_name} {param_ident}")
+    return _get_node_name(method_node) + "(" + ", ".join(params) + ")"
 
 
-def get_class_method_nodes_from_class_source(class_source_text: str, class_fqn: str, method_signature_or_name: str, exact_method_signature_match: bool = True) -> tuple[Optional[jl.parser.tree.ClassDeclaration], Optional[jl.parser.tree.MethodDeclaration]]:
+def retrieve_class_method_nodes_from_source(
+    source_code: str,
+    class_fqn: str,
+    method_signature_or_name: str,
+    exact_method_signature_match: bool = True,
+) -> tuple[Optional[Node], Optional[Node]]:
+    """
+    Find and return (class_node, method_node) for the given class FQN + method signature.
+    Returns (class_node, None) when the class is found but the method is not,
+    and (None, None) when the class itself cannot be found.
+    """
     try:
-        cu = jl.parse.parse(class_source_text)
-    except:
+        root = _parse(source_code)
+    except Exception:
         return None, None
-    # types contain only the top level classes
-    for class_node in list(cu.types):
-        if not isinstance(class_node, jl.parser.tree.ClassDeclaration):
+
+    for class_node in _direct_children_of_type(root, "class_declaration"):
+        if get_class_fqn(class_node) != class_fqn:
             continue
-        if get_class_fqn(cu, class_node) == class_fqn:
-            for method_node in class_node.methods:
-                # print(get_method_signature(method_node), "vs", method_name)
-                if exact_method_signature_match:
-                    if get_method_signature(method_node) == method_signature_or_name:
-                        return class_node, method_node
-                elif get_method_signature(method_node).split("(", 1)[0] == method_signature_or_name:
-                    return class_node, method_node
+        class_body = class_node.child_by_field_name("body")
+        if class_body is None:
             return class_node, None
+        for method_node in _direct_children_of_type(class_body, "method_declaration"):
+            sig = get_method_signature(method_node)
+            if exact_method_signature_match:
+                if sig == method_signature_or_name:
+                    return class_node, method_node
+            else:
+                if sig.split("(", 1)[0] == method_signature_or_name:
+                    return class_node, method_node
+        # class found, method not found
+        return class_node, None
     return None, None
 
 
-def get_invocations(method_node: jl.parser.tree.MethodDeclaration, class_node: jl.parser.tree.ClassDeclaration) -> list[dict]:
+def resolve_identifier_type(
+    name: str,
+    class_node: Node,
+    method_node: Node,
+) -> Optional[str]:
+    """
+    Resolve *name* (an identifier) to its declared type by searching (in order):
+      1. Local variable declarations in the method body
+      2. Method parameters
+      3. Class fields
+    """
+    if name is None:
+        return None
+
+    # 1. Local variable declarations
+    for local_var_decl in _all_descendants_of_type(method_node, "local_variable_declaration"):
+        type_node = local_var_decl.child_by_field_name("type")
+        if type_node:
+            for declarator in _all_descendants_of_type(local_var_decl, "variable_declarator"):
+                if _get_node_name(declarator) == name:
+                    return type_node.text.decode()
+
+    # 2. Method parameters
+    params_node = method_node.child_by_field_name("parameters")
+    if params_node:
+        for param in _direct_children_of_type(params_node, "formal_parameter"):
+            if _get_node_name(param) == name:
+                type_node = param.child_by_field_name("type")
+                return type_node.text.decode()
+
+    # 3. Class fields
+    class_body = class_node.child_by_field_name("body")
+    if class_body:
+        for field_decl in _direct_children_of_type(class_body, "field_declaration"):
+            type_node = field_decl.child_by_field_name("type")
+            if type_node:
+                for declarator in _all_descendants_of_type(field_decl, "variable_declarator"):
+                    if _get_node_name(declarator) == name:
+                        return type_node.text.decode()
+
+    return None
+
+
+def get_invocations(
+    method_node: Node,
+    class_node: Node
+) -> list[dict]:
+    """
+    Return a list of dicts describing every method invocation inside *method_node*:
+      {"name": str, "args": int, "type": str | None}
+    """
     invocations = []
-    for _, invocation_node in method_node.filter(jl.parser.tree.MethodInvocation):
-        # invocation_str = process_invocation_node(invocation_node)
-        invoked_method_name = getattr(invocation_node, "member")
-        nr_args = len(getattr(invocation_node, "arguments"))
-        caller_identifier = getattr(invocation_node, "qualifier")  # Can be an empty string
-        caller_type_name = find_identifier_type(caller_identifier, class_node, method_node)
-        invocation = {
+    for invocation_node in _all_descendants_of_type(method_node, "method_invocation"):
+        # Method name
+        invoked_method_name = _get_node_name(invocation_node)
+
+        # Argument count
+        args_node = invocation_node.child_by_field_name("arguments")
+        nr_args = len(args_node.named_children) if args_node else 0
+
+        # Caller / qualifier (the object the method is called on)
+        obj_node = invocation_node.child_by_field_name("object")
+        caller_identifier = obj_node.text.decode() if obj_node else ""
+
+        # Resolve identifier to a type (only works for simple identifiers)
+        caller_type_name = resolve_identifier_type(caller_identifier, class_node, method_node)
+
+        invocations.append({
             "name": invoked_method_name,
             "args": nr_args,
-            "type": caller_type_name
-        }
-        invocations.append(invocation)
+            "type": caller_type_name,
+        })
     return invocations

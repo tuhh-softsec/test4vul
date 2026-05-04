@@ -7,35 +7,35 @@ from tqdm import tqdm
 from test4vul.focal import get_substrings_method_name, is_focal_method_for_test
 from test4vul.mining import (blob_to_text, get_commit_from_repo_url,
                              get_java_production_files_as_blobs)
-from test4vul.parsing import (get_class_fqn,
-                              get_class_method_nodes_from_class_source,
-                              get_invocations, get_method_signature,
-                              retrieve_methods_from_class_source)
+from test4vul.parsing import (get_class_fqn, get_invocations, retrieve_class_method_nodes_from_source,
+                              get_method_name, get_method_signature, retrieve_methods_of_top_class_from_source)
 from test4vul.resources import TEST4VUL_DATASET_NAME, load_test4vul
 
 
 def retrieve_production_methods(prod_files: list) -> list[dict]:
     production_methods = []
     for a_prod_file_blob in tqdm(prod_files):
-        prod_methods_in_file = retrieve_methods_from_class_source(blob_to_text(a_prod_file_blob), show_errors=False)  # full_info=False,)
-        for cu, class_node, method_node, method_text, start, end in prod_methods_in_file:
-            production_methods.append({
+        prod_methods_in_file = retrieve_methods_of_top_class_from_source(blob_to_text(a_prod_file_blob), show_errors=False)  # full_info=False,)
+        for _, class_node, method_node, method_text, start, end in prod_methods_in_file:
+            p_method = {
                 "file_path": a_prod_file_blob.path,
-                "class_name": get_class_fqn(cu, class_node),
-                "method_name": method_node.name,
+                "class_name": get_class_fqn(class_node),
+                "method_name": get_method_name(method_node),
                 "method_signature": get_method_signature(method_node),
                 "code": method_text,
                 "startline": start,
                 "endline": end,
-            })
+            }
+            production_methods.append(p_method)
     return production_methods
 
 
 def retrieve_metadata_for_test(a_test_file_content: str, a_test_class_name: str, a_test_method_name: str):
     metadata = {}
-    metadata["test_class_node"], metadata["test_method_node"] = get_class_method_nodes_from_class_source(
+    metadata["test_class_node"], metadata["test_method_node"] = retrieve_class_method_nodes_from_source(
         a_test_file_content, a_test_class_name, a_test_method_name, exact_method_signature_match=False)
     if metadata["test_class_node"] is None or metadata["test_method_node"] is None:
+        input("This should not happen!")
         return metadata
     metadata["test_substrings"] = get_substrings_method_name(a_test_method_name)
     metadata["test_invocations"] = get_invocations(metadata["test_method_node"], metadata["test_class_node"])
@@ -63,7 +63,7 @@ def main():
         if last_p_url == p_url and last_p_rev == p_rev:
             rev_commit = last_rev_commit
             production_methods = last_production_methods
-        else: 
+        else:
             rev_commit = get_commit_from_repo_url(p_url, p_rev)
             if rev_commit is None:
                 continue
@@ -108,7 +108,7 @@ def main():
                 test["focal_methods"].append(prod_meth)
                 print(f'- Linked production method {prod_meth["class_name"]}::{prod_meth["method_signature"]}')
         if len(test["focal_methods"]) == 0:
-            print(f'No focal method found :(')
+            print(f'- No focal method found :(')
         del test["metadata"]
         os.makedirs(args.out_dir, exist_ok=True)
         outfile = os.path.join(args.out_dir, TEST4VUL_DATASET_NAME)

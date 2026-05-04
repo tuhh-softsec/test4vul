@@ -55,9 +55,13 @@ def measure_focal_relevance(prod_method_signature: str, prod_class_fqn: str, tes
         arg_count = prod_method_signature.count(",")
         if arg_count > 0:
             arg_count += 1
+        if "..." in prod_method_signature:
+            arg_match = inv["args"] >= arg_count - 1
+        else:
+            arg_match = inv["args"] == arg_count
         matches = {
             "invocationNameMatch": int(inv["name"] == prod_method_name),
-            "invocationArgsMatch": int(inv["args"] == arg_count),
+            "invocationArgsMatch": int(arg_match),
             "invocationTypeMatch": int(inv["type"] == prod_class_name)
         }
         invocation_matches.append(matches)

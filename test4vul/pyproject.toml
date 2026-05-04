@@ -11,6 +11,8 @@ dependencies = [
     "halo~=0.0.31",
     "gitpython~=3.1.44",
     "javalang~=0.13.0",
+    "tree-sitter~=0.25.2",
+    "tree-sitter-java~=0.23.5",
     "jellyfish~=1.2.1",
     "tqdm~=4.67.1",
 ]
