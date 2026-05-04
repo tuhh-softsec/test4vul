@@ -60,11 +60,7 @@ def retrieve_methods_of_top_class_from_source(
             print("- Error during parsing")
         return []
     for class_node in _direct_children_of_type(root, "class_declaration"):
-        # Method declarations are found inside class bodies
-        class_body = class_node.child_by_field_name("body")
-        if class_body is None:
-            continue
-        for method_node in _direct_children_of_type(class_body, "method_declaration"):
+        for method_node in _get_method_declarations(class_node):
             if full_info:
                 method_text = method_node.text.decode("utf-8")
                 if method_text == "":
@@ -78,12 +74,17 @@ def retrieve_methods_of_top_class_from_source(
     return list(dict.fromkeys(methods))
 
 
+def _walk_to_root(node: Node) -> Node:
+    root = node
+    while root.parent is not None:
+        root = root.parent
+    return root
+
+
 def get_class_fqn(class_node: Node) -> str:
     """Return the fully-qualified class name, e.g. 'com.example.MyClass'."""
     prefix = ""
-    root = class_node
-    while root.parent is not None:
-        root = root.parent
+    root = _walk_to_root(class_node)
     for package in _direct_children_of_type(root, "package_declaration"):
         for p_name in _direct_children_of_type(package, "scoped_identifier", "identifier"):
             prefix += p_name.text.decode()
@@ -93,6 +94,10 @@ def get_class_fqn(class_node: Node) -> str:
 
 def get_method_name(method_node: Node) -> str:
     return _get_node_name(method_node)
+
+
+def get_class_name(class_node: Node) -> str:
+    return _get_node_name(class_node)
 
 
 def get_method_signature(method_node: Node) -> str:
@@ -133,6 +138,14 @@ def get_method_signature(method_node: Node) -> str:
     return _get_node_name(method_node) + "(" + ", ".join(params) + ")"
 
 
+def _get_method_declarations(class_node: Node) -> list[Node]:
+    # Method declarations are found inside class bodies
+    class_body = class_node.child_by_field_name("body")
+    if class_body is None:
+        return []
+    return [mn for mn in _direct_children_of_type(class_body, "method_declaration")]
+
+
 def retrieve_class_method_nodes_from_source(
     source_code: str,
     class_fqn: str,
@@ -152,10 +165,10 @@ def retrieve_class_method_nodes_from_source(
     for class_node in _direct_children_of_type(root, "class_declaration"):
         if get_class_fqn(class_node) != class_fqn:
             continue
-        class_body = class_node.child_by_field_name("body")
-        if class_body is None:
+        method_declarations = _get_method_declarations(class_node)
+        if len(method_declarations) == 0:
             return class_node, None
-        for method_node in _direct_children_of_type(class_body, "method_declaration"):
+        for method_node in method_declarations:
             sig = get_method_signature(method_node)
             if exact_method_signature_match:
                 if sig == method_signature_or_name:
@@ -168,7 +181,7 @@ def retrieve_class_method_nodes_from_source(
     return None, None
 
 
-def resolve_identifier_type(
+def resolve_identifier_simple_type(
     name: str,
     class_node: Node,
     method_node: Node,
@@ -211,6 +224,48 @@ def resolve_identifier_type(
     return None
 
 
+def _build_static_import_map(class_node: Node) -> tuple[dict[str, str], list[str]]:
+    """
+    Collect all static imports in a class node.
+
+    Returns
+    -------
+    explicit_map : dict[str, str]
+        member name -> Fully qualified class name
+        e.g. `import static java.util.Collections.sort` -> {"sort": "java.util.Collections"}
+    wildcard_classes : list[str]
+        Fully qualified class names brought in via `import static foo.Bar.*`
+    """
+    explicit_map: dict[str, str] = {}
+    wildcard_classes: list[str] = []
+    root = _walk_to_root(class_node)
+    for imp_decl_node in _direct_children_of_type(root, "import_declaration"):
+        # tree-sitter represents `static` as an unnamed keyword child
+        is_static = any(
+            (not child.is_named) and child.text == b"static"
+            for child in imp_decl_node.children
+        )
+        if not is_static:
+            continue
+        # Pull the dotted path out of the raw text, e.g. "import static java.util.Collections.sort;" -> ["java", "util", "Collections", "sort"]
+        raw = imp_decl_node.text.decode()
+        path_str = (
+            raw.replace("import", "", 1)
+               .replace("static", "", 1)
+               .replace(";", "")
+               .strip()
+        )
+        class_fqn, member = path_str.rsplit(".", 1)
+        class_fqn = class_fqn.strip()
+        member = member.strip()  # It can be a method name, a field name, or wildcard "*"
+        if member == "*":
+            if class_fqn:
+                wildcard_classes.append(class_fqn)
+        else:
+            explicit_map[member] = class_fqn
+    return explicit_map, wildcard_classes
+
+
 def get_invocations(
     method_node: Node,
     class_node: Node
@@ -232,8 +287,26 @@ def get_invocations(
         obj_node = invocation_node.child_by_field_name("object")
         caller_identifier = obj_node.text.decode() if obj_node else ""
 
-        # Resolve identifier to a type (only works for simple identifiers)
-        caller_type_name = resolve_identifier_type(caller_identifier, class_node, method_node)
+        if caller_identifier:
+            # Resolve the identifier to a SIMPLE type inside the same class
+            caller_type_name = resolve_identifier_simple_type(caller_identifier, class_node, method_node)
+            # If the resolution did not suceeded, it is likely that the caller is a class (i.e., the method is static). So, we use the identifier as the type
+            if caller_type_name is None:
+                caller_type_name = caller_identifier
+        else:
+            # We start by searching the method internally (same class)
+            for method_node in _get_method_declarations(class_node):
+                if get_method_name(method_node) == invoked_method_name:
+                    caller_type_name = get_class_name(class_node)
+            
+            # If still not found, we search among the static imports
+            if caller_type_name is None:
+                static_imports_map, static_imports_wildcards = _build_static_import_map(class_node)
+                caller_type_name = static_imports_map.get(invoked_method_name)
+                if caller_type_name is not None and "." in caller_type_name:
+                    caller_type_name = caller_type_name.rsplit(".", 1)[1]
+                # TODO If not found, should parse all the classes in `static_imports_wildcards` and check if they have a method with name `caller_identifier`. To do so, we need to look into all other classes, so we need to have access to all files. Not urgent for now.
+            
 
         invocations.append({
             "name": invoked_method_name,
