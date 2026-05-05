@@ -308,7 +308,7 @@ def get_invocations(
         if caller_identifier and obj_node.type == "identifier":
             # Resolve the identifier to a SIMPLE type inside the same class
             caller_type_name = resolve_identifier_simple_type(caller_identifier, class_node, method_node)
-            
+
             # If the resolution did not suceeded, it might be that the caller is a class (i.e., the method is static). If so, we use the identifier as the type
             if not caller_type_name:
                 caller_type_name = caller_identifier
@@ -317,7 +317,7 @@ def get_invocations(
             for local_method_node in _get_method_declarations(class_node):
                 if get_method_name(local_method_node) == invoked_method_name:
                     caller_type_name = get_class_name(class_node)
-            
+
             # If still not found, we search among the static imports
             if not caller_type_name:
                 static_imports_map, static_imports_wildcards = _build_static_import_map(class_node)

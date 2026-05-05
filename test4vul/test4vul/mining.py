@@ -1,6 +1,7 @@
 import os
 import sys
 import tempfile
+import traceback
 from typing import Optional
 
 from git import GitCommandError, Repo
@@ -15,6 +16,7 @@ def clone_repo(repo_url: str) -> Optional[tempfile.TemporaryDirectory]:
             Repo.clone_from(repo_url, repo_temp_dir.name)
         return repo_temp_dir
     except GitCommandError:
+        print(traceback.format_exc())
         repo_temp_dir.cleanup()
         return None
 
@@ -27,6 +29,7 @@ def get_commit_from_repo_url(repo_url: str, rev_hash: str) -> Optional[Commit]:
         git_repo = Repository(repo_temp_dir.name, single=rev_hash)
         return next(git_repo.traverse_commits())
     except (ValueError, Exception):
+        print(traceback.format_exc())
         return None
 
 
