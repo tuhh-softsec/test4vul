@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 import sys
 import tempfile
 import traceback
@@ -38,9 +39,10 @@ def get_java_production_files_as_blobs(rev_commit: Commit, extension: str) -> li
     for obj in rev_commit._c_object.tree.traverse():
         if getattr(obj, "type") != 'blob':  # 'blob' = file, 'tree' = directory
             continue
-        if not f".{extension}" in os.fspath(getattr(obj, "path")):
+        file_path = os.fspath(getattr(obj, "path"))
+        if not f".{extension}" in file_path:
             continue
-        if "src/main" in os.fspath(getattr(obj, "path")):
+        if not ({"test", "tests"} & set(Path(file_path).parts)):
             java_prod_files_blobs.append(obj)
     return java_prod_files_blobs
 

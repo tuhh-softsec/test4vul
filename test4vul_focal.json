@@ -262,7 +262,17 @@
     "method_name": "testIsFilePathWithParentDirectories",
     "code": "public void testIsFilePathWithParentDirectories() throws Exception {\n\ttestValidFilePaths(\n\t\tnew String[] {\n\t\t\t\"a\", \"a/a\", \"a\\\\a\", \"a/./a\", \"a\\\\.\\\\a\", \"a//a\", \"a\\\\\\\\a\",\n\t\t\t\"a//a//\", \"a\\\\a\\\\\", \"a..\", \"a.\", \".a\", \"..a\", \"a../\", \"a./\",\n\t\t\t\".a/\", \"..a/\", \".\", \"./\", \"/.\", \"./a\", \"a/.\", \"a/./a\", \"c:\\\\a\",\n\t\t\t\"/\", \"/a\", \"..a/\", \"../a\", \"/a/../a\", \"c:\\\\a\\\\..\\\\a\"\n\t\t},\n\t\ttrue, true);\n}",
     "matched_vulns": [],
-    "focal_methods": []
+    "focal_methods": [
+      {
+        "file_path": "portal-kernel/src/com/liferay/portal/kernel/util/Validator.java",
+        "class_name": "com.liferay.portal.kernel.util.Validator",
+        "method_name": "isFilePath",
+        "method_signature": "isFilePath(String path, boolean parentDirAllowed)",
+        "code": "public static boolean isFilePath(String path, boolean parentDirAllowed) {\n\tif (isNull(path) || path.contains(StringPool.NULL_CHAR)) {\n\t\treturn false;\n\t}\n\n\tif (parentDirAllowed) {\n\t\treturn true;\n\t}\n\n\tif (path.equals(StringPool.DOUBLE_PERIOD)) {\n\t\treturn false;\n\t}\n\n\tString normalizedPath = StringUtil.replace(\n\t\tpath, CharPool.BACK_SLASH, CharPool.SLASH);\n\n\tif (normalizedPath.startsWith(\n\t\t\tStringPool.DOUBLE_PERIOD.concat(StringPool.SLASH)) ||\n\t\tnormalizedPath.endsWith(\n\t\t\tStringPool.SLASH.concat(StringPool.DOUBLE_PERIOD)) ||\n\t\tnormalizedPath.contains(\n\t\t\tStringBundler.concat(\n\t\t\t\tStringPool.SLASH, StringPool.DOUBLE_PERIOD,\n\t\t\t\tStringPool.SLASH))) {\n\n\t\treturn false;\n\t}\n\n\treturn true;\n}",
+        "startline": 529,
+        "endline": 558
+      }
+    ]
   },
   {
     "repo": "archimatetool/archi",
@@ -272,7 +282,35 @@
     "method_name": "testUnpackZipFileTriesToUnzipInParentRelativeFolder",
     "code": "public void testUnpackZipFileTriesToUnzipInParentRelativeFolder() throws Exception {\n        // Create a Zip file\n        File tmpZipFile = TestUtils.createTempFile(\".zip\");\n        \n        // Add afile\n        File srcFile = new File(TestSupport.getTestDataFolder(), \"filetest/readme.txt\");\n        BufferedOutputStream out = new BufferedOutputStream(new FileOutputStream(tmpZipFile));\n        ZipOutputStream zOut = new ZipOutputStream(out);\n        \n        // But add it with a malicious path\n        ZipUtils.addFileToZip(srcFile, \"../../\" + srcFile.getName(), zOut);\n        zOut.flush();\n        zOut.close();\n\n        File folderTemp = new File(TestUtils.getMainTempFolder(), \"ziptest\");\n        \n        // Now unpack it and expect an exception\n        assertThrows(IOException.class, () -> {\n            ZipUtils.unpackZip(tmpZipFile, folderTemp);\n        });\n    }",
     "matched_vulns": [],
-    "focal_methods": []
+    "focal_methods": [
+      {
+        "file_path": "com.archimatetool.editor/src/com/archimatetool/editor/utils/ZipUtils.java",
+        "class_name": "com.archimatetool.editor.utils.ZipUtils",
+        "method_name": "addFileToZip",
+        "method_signature": "addFileToZip(File file, String entryName, ZipOutputStream zOut)",
+        "code": "public static void addFileToZip(File file, String entryName, ZipOutputStream zOut) throws IOException {\r\n        // Don't add directories\r\n        if(file.isDirectory()) {\r\n            return;\r\n        } \r\n        \r\n        int bytesRead;\r\n        final int bufSize = 8192;\r\n        byte buf[] = new byte[bufSize];\r\n        \r\n        ZipEntry zipEntry = new ZipEntry(entryName);\r\n        // Set time stamp to file's\r\n        zipEntry.setTime(file.lastModified());\r\n        \r\n        try {\r\n            zOut.putNextEntry(zipEntry);\r\n        }\r\n        catch(IOException ex) {\r\n            /*\r\n             * Ignore things like duplicate entries and just carry on\r\n             */\r\n            return;\r\n        }\r\n        \r\n        BufferedInputStream in = new BufferedInputStream(new FileInputStream(file), bufSize);\r\n        while((bytesRead = in.read(buf)) != -1) {\r\n            zOut.write(buf, 0, bytesRead);\r\n        }\r\n        zOut.closeEntry();\r\n        in.close();\r\n    }",
+        "startline": 142,
+        "endline": 172
+      },
+      {
+        "file_path": "com.archimatetool.editor/src/com/archimatetool/editor/utils/ZipUtils.java",
+        "class_name": "com.archimatetool.editor.utils.ZipUtils",
+        "method_name": "unpackZip",
+        "method_signature": "unpackZip(File zipFile, File targetFolder)",
+        "code": "public static void unpackZip(File zipFile, File targetFolder) throws IOException {\r\n\tunpackZip(zipFile, targetFolder, null);\r\n}",
+        "startline": 479,
+        "endline": 481
+      },
+      {
+        "file_path": "com.archimatetool.editor/src/com/archimatetool/editor/utils/ZipUtils.java",
+        "class_name": "com.archimatetool.editor.utils.ZipUtils",
+        "method_name": "unpackZip",
+        "method_signature": "unpackZip(File zipFile, File targetFolder, IProgressMonitor progressMonitor)",
+        "code": "public static void unpackZip(File zipFile, File targetFolder, IProgressMonitor progressMonitor) throws IOException {\r\n    targetFolder.mkdirs();\r\n\t\r\n\tBufferedOutputStream out = null;\r\n\tZipEntry zipEntry;\r\n\tint bytesRead;\r\n\tfinal int bufSize = 1024;\r\n\tbyte buf[] = new byte[bufSize];\r\n\tBufferedInputStream in = new BufferedInputStream(new FileInputStream(zipFile), bufSize);\r\n\tZipInputStream zIn = new ZipInputStream(in);\r\n\t\r\n\ttry {\r\n\t\twhile((zipEntry = zIn.getNextEntry()) != null) {\r\n\t\t\t// Don't add directories\r\n\t\t\tif(!zipEntry.isDirectory()) {\r\n\t\t\t\tFile outFile = new File(targetFolder, zipEntry.getName());\r\n\t\t\t\t\r\n\t\t\t\t// Check that the path of the outfile is a sub-directory of targetFolder\r\n\t\t\t\t// To ensure that it doesn't over-write something it shouldn't from entries like \"../../entry\"\r\n\t\t\t\tif(!outFile.toPath().normalize().startsWith(targetFolder.toPath())) {\r\n\t\t\t\t    zIn.close();\r\n\t\t\t\t    throw new IOException(\"Attempt to write file outside of folder: \" + outFile); //$NON-NLS-1$\r\n\t\t\t\t}\r\n\t\t\t\t\r\n\t\t\t\t// Ensure that the parent Folder exists\r\n\t\t\t\tif(!outFile.getParentFile().exists()) {\r\n\t\t\t\t    outFile.getParentFile().mkdirs();\r\n\t\t\t\t}\r\n\t\t\t\t\r\n\t\t\t\tout = new BufferedOutputStream(new FileOutputStream(outFile), bufSize);\r\n\t\t\t\t\r\n\t\t\t\t// If we have a Progress Monitor, display name\r\n\t\t\t\tif(progressMonitor != null) {\r\n\t\t\t\t    progressMonitor.setTaskName(zipEntry.getName());\r\n\t\t\t\t}\r\n\t\t\t\t\r\n\t\t\t\tint sleep_count = 0;\r\n\t\t\t\t\r\n\t\t\t\twhile((bytesRead = zIn.read(buf)) != -1) {\r\n\t\t\t\t\tout.write(buf, 0, bytesRead);\r\n\t\t\t\t\t\r\n\t\t\t\t\t// Allow other things to happen every 40 chunks\r\n\t\t\t\t\tif(sleep_count >= 40) {\r\n\t\t\t\t\t\ttry {\r\n\t\t\t\t\t\t\tThread.sleep(2);\r\n\t\t\t\t\t\t} catch(InterruptedException ex) {\r\n\t\t\t\t\t\t\tex.printStackTrace();\r\n\t\t\t\t\t\t}\r\n\t\t\t\t\t\tsleep_count = 0;\r\n\t\t\t\t\t}\r\n\t\t\t\t\t\r\n\t\t\t\t\tsleep_count++;\r\n\t\t\t\t\t\r\n\t\t\t\t\t// If we have a Progress Monitor\r\n\t\t\t\t\tif(progressMonitor != null && progressMonitor.isCanceled()) {\r\n\t\t\t\t\t\tout.flush();\r\n\t\t\t\t\t\tout.close();\r\n\t\t\t\t\t\tzIn.close();\r\n\t\t\t\t\t\tthrow new IOException(\"User Cancelled\"); //$NON-NLS-1$\r\n\t\t\t\t\t}\r\n\t\t\t\t}\r\n\t\t\t\t\r\n\t\t\t\t// Restore time stamp\r\n\t\t\t\toutFile.setLastModified(zipEntry.getTime());\r\n\t\t\t\t\r\n\t\t\t\t// Close File\r\n\t\t\t\tout.flush();\r\n\t\t\t\tout.close();\r\n\t\t\t}\r\n\t\t\t\r\n\t\t\tzIn.closeEntry();\r\n\t\t}\r\n\t\t\r\n\t\tzIn.close();\r\n\t\t\r\n\t}\r\n\t// We'll catch this exception to close the file otherwise it remains locked\r\n\tcatch(IOException ex) {\r\n\t\tzIn.close();\r\n\t\tif(out != null) {\r\n\t\t\tout.flush();\r\n\t\t\tout.close();\r\n\t\t}\r\n\t\t// And throw it again\r\n\t\tthrow ex;\r\n\t}\r\n}",
+        "startline": 493,
+        "endline": 579
+      }
+    ]
   },
   {
     "repo": "jenkinsci/jenkins",
@@ -1440,7 +1478,17 @@
     "method_name": "testEncodeURL03",
     "code": "public void testEncodeURL03() throws Exception {\n        doTestEncodeURL(\"..\", \"..;jsessionid=1234\");\n    }",
     "matched_vulns": [],
-    "focal_methods": []
+    "focal_methods": [
+      {
+        "file_path": "java/org/apache/catalina/connector/Response.java",
+        "class_name": "org.apache.catalina.connector.Response",
+        "method_name": "encodeURL",
+        "method_signature": "encodeURL(String url)",
+        "code": "@Override\n    public String encodeURL(String url) {\n\n        String absolute;\n        try {\n            absolute = toAbsolute(url);\n        } catch (IllegalArgumentException iae) {\n            // Relative URL\n            return url;\n        }\n\n        if (isEncodeable(absolute)) {\n            // W3c spec clearly said\n            if (url.equalsIgnoreCase(\"\")) {\n                url = absolute;\n            } else if (url.equals(absolute) && !hasPath(url)) {\n                url += '/';\n            }\n            return toEncoded(url, request.getSessionInternal().getIdInternal());\n        } else {\n            return url;\n        }\n\n    }",
+        "startline": 985,
+        "endline": 1008
+      }
+    ]
   },
   {
     "repo": "apache/tomcat",
@@ -1450,7 +1498,17 @@
     "method_name": "testEncodeURL04",
     "code": "public void testEncodeURL04() throws Exception {\n        doTestEncodeURL(\".././..\", \".././..;jsessionid=1234\");\n    }",
     "matched_vulns": [],
-    "focal_methods": []
+    "focal_methods": [
+      {
+        "file_path": "java/org/apache/catalina/connector/Response.java",
+        "class_name": "org.apache.catalina.connector.Response",
+        "method_name": "encodeURL",
+        "method_signature": "encodeURL(String url)",
+        "code": "@Override\n    public String encodeURL(String url) {\n\n        String absolute;\n        try {\n            absolute = toAbsolute(url);\n        } catch (IllegalArgumentException iae) {\n            // Relative URL\n            return url;\n        }\n\n        if (isEncodeable(absolute)) {\n            // W3c spec clearly said\n            if (url.equalsIgnoreCase(\"\")) {\n                url = absolute;\n            } else if (url.equals(absolute) && !hasPath(url)) {\n                url += '/';\n            }\n            return toEncoded(url, request.getSessionInternal().getIdInternal());\n        } else {\n            return url;\n        }\n\n    }",
+        "startline": 985,
+        "endline": 1008
+      }
+    ]
   },
   {
     "repo": "apache/tomcat",
@@ -1460,7 +1518,17 @@
     "method_name": "testEncodeURL09",
     "code": "public void testEncodeURL09() throws Exception {\n        doTestEncodeURL(\"./.?x=/../../\", \"./.;jsessionid=1234?x=/../../\");\n    }",
     "matched_vulns": [],
-    "focal_methods": []
+    "focal_methods": [
+      {
+        "file_path": "java/org/apache/catalina/connector/Response.java",
+        "class_name": "org.apache.catalina.connector.Response",
+        "method_name": "encodeURL",
+        "method_signature": "encodeURL(String url)",
+        "code": "@Override\n    public String encodeURL(String url) {\n\n        String absolute;\n        try {\n            absolute = toAbsolute(url);\n        } catch (IllegalArgumentException iae) {\n            // Relative URL\n            return url;\n        }\n\n        if (isEncodeable(absolute)) {\n            // W3c spec clearly said\n            if (url.equalsIgnoreCase(\"\")) {\n                url = absolute;\n            } else if (url.equals(absolute) && !hasPath(url)) {\n                url += '/';\n            }\n            return toEncoded(url, request.getSessionInternal().getIdInternal());\n        } else {\n            return url;\n        }\n\n    }",
+        "startline": 985,
+        "endline": 1008
+      }
+    ]
   },
   {
     "repo": "apache/tomcat",
@@ -1470,7 +1538,17 @@
     "method_name": "testEncodeURL10",
     "code": "public void testEncodeURL10() throws Exception {\n        doTestEncodeURL(\"./..?x=/../../\", \"./..;jsessionid=1234?x=/../../\");\n    }",
     "matched_vulns": [],
-    "focal_methods": []
+    "focal_methods": [
+      {
+        "file_path": "java/org/apache/catalina/connector/Response.java",
+        "class_name": "org.apache.catalina.connector.Response",
+        "method_name": "encodeURL",
+        "method_signature": "encodeURL(String url)",
+        "code": "@Override\n    public String encodeURL(String url) {\n\n        String absolute;\n        try {\n            absolute = toAbsolute(url);\n        } catch (IllegalArgumentException iae) {\n            // Relative URL\n            return url;\n        }\n\n        if (isEncodeable(absolute)) {\n            // W3c spec clearly said\n            if (url.equalsIgnoreCase(\"\")) {\n                url = absolute;\n            } else if (url.equals(absolute) && !hasPath(url)) {\n                url += '/';\n            }\n            return toEncoded(url, request.getSessionInternal().getIdInternal());\n        } else {\n            return url;\n        }\n\n    }",
+        "startline": 985,
+        "endline": 1008
+      }
+    ]
   },
   {
     "repo": "apache/tomcat",
@@ -1480,7 +1558,17 @@
     "method_name": "testEncodeURL11",
     "code": "public void testEncodeURL11() throws Exception {\n        doTestEncodeURL(\"./..?x=/../..\", \"./..;jsessionid=1234?x=/../..\");\n    }",
     "matched_vulns": [],
-    "focal_methods": []
+    "focal_methods": [
+      {
+        "file_path": "java/org/apache/catalina/connector/Response.java",
+        "class_name": "org.apache.catalina.connector.Response",
+        "method_name": "encodeURL",
+        "method_signature": "encodeURL(String url)",
+        "code": "@Override\n    public String encodeURL(String url) {\n\n        String absolute;\n        try {\n            absolute = toAbsolute(url);\n        } catch (IllegalArgumentException iae) {\n            // Relative URL\n            return url;\n        }\n\n        if (isEncodeable(absolute)) {\n            // W3c spec clearly said\n            if (url.equalsIgnoreCase(\"\")) {\n                url = absolute;\n            } else if (url.equals(absolute) && !hasPath(url)) {\n                url += '/';\n            }\n            return toEncoded(url, request.getSessionInternal().getIdInternal());\n        } else {\n            return url;\n        }\n\n    }",
+        "startline": 985,
+        "endline": 1008
+      }
+    ]
   },
   {
     "repo": "apache/tomcat",
@@ -1490,7 +1578,17 @@
     "method_name": "testEncodeURL14",
     "code": "public void testEncodeURL14() throws Exception {\n        doTestEncodeURL(\"./.#/../../\", \"./.;jsessionid=1234#/../../\");\n    }",
     "matched_vulns": [],
-    "focal_methods": []
+    "focal_methods": [
+      {
+        "file_path": "java/org/apache/catalina/connector/Response.java",
+        "class_name": "org.apache.catalina.connector.Response",
+        "method_name": "encodeURL",
+        "method_signature": "encodeURL(String url)",
+        "code": "@Override\n    public String encodeURL(String url) {\n\n        String absolute;\n        try {\n            absolute = toAbsolute(url);\n        } catch (IllegalArgumentException iae) {\n            // Relative URL\n            return url;\n        }\n\n        if (isEncodeable(absolute)) {\n            // W3c spec clearly said\n            if (url.equalsIgnoreCase(\"\")) {\n                url = absolute;\n            } else if (url.equals(absolute) && !hasPath(url)) {\n                url += '/';\n            }\n            return toEncoded(url, request.getSessionInternal().getIdInternal());\n        } else {\n            return url;\n        }\n\n    }",
+        "startline": 985,
+        "endline": 1008
+      }
+    ]
   },
   {
     "repo": "apache/tomcat",
@@ -1500,7 +1598,17 @@
     "method_name": "testEncodeURL15",
     "code": "public void testEncodeURL15() throws Exception {\n        doTestEncodeURL(\"./..#/../../\", \"./..;jsessionid=1234#/../../\");\n    }",
     "matched_vulns": [],
-    "focal_methods": []
+    "focal_methods": [
+      {
+        "file_path": "java/org/apache/catalina/connector/Response.java",
+        "class_name": "org.apache.catalina.connector.Response",
+        "method_name": "encodeURL",
+        "method_signature": "encodeURL(String url)",
+        "code": "@Override\n    public String encodeURL(String url) {\n\n        String absolute;\n        try {\n            absolute = toAbsolute(url);\n        } catch (IllegalArgumentException iae) {\n            // Relative URL\n            return url;\n        }\n\n        if (isEncodeable(absolute)) {\n            // W3c spec clearly said\n            if (url.equalsIgnoreCase(\"\")) {\n                url = absolute;\n            } else if (url.equals(absolute) && !hasPath(url)) {\n                url += '/';\n            }\n            return toEncoded(url, request.getSessionInternal().getIdInternal());\n        } else {\n            return url;\n        }\n\n    }",
+        "startline": 985,
+        "endline": 1008
+      }
+    ]
   },
   {
     "repo": "apache/tomcat",
@@ -1510,7 +1618,17 @@
     "method_name": "testEncodeURL16",
     "code": "public void testEncodeURL16() throws Exception {\n        doTestEncodeURL(\"./..#/../..\", \"./..;jsessionid=1234#/../..\");\n    }",
     "matched_vulns": [],
-    "focal_methods": []
+    "focal_methods": [
+      {
+        "file_path": "java/org/apache/catalina/connector/Response.java",
+        "class_name": "org.apache.catalina.connector.Response",
+        "method_name": "encodeURL",
+        "method_signature": "encodeURL(String url)",
+        "code": "@Override\n    public String encodeURL(String url) {\n\n        String absolute;\n        try {\n            absolute = toAbsolute(url);\n        } catch (IllegalArgumentException iae) {\n            // Relative URL\n            return url;\n        }\n\n        if (isEncodeable(absolute)) {\n            // W3c spec clearly said\n            if (url.equalsIgnoreCase(\"\")) {\n                url = absolute;\n            } else if (url.equals(absolute) && !hasPath(url)) {\n                url += '/';\n            }\n            return toEncoded(url, request.getSessionInternal().getIdInternal());\n        } else {\n            return url;\n        }\n\n    }",
+        "startline": 985,
+        "endline": 1008
+      }
+    ]
   },
   {
     "repo": "apache/tomcat",
@@ -1520,7 +1638,17 @@
     "method_name": "testEncodeRedirectURL04",
     "code": "public void testEncodeRedirectURL04() throws Exception {\n        doTestEncodeRedirectURL(\".././..\", \".././..;jsessionid=1234\");\n    }",
     "matched_vulns": [],
-    "focal_methods": []
+    "focal_methods": [
+      {
+        "file_path": "java/org/apache/catalina/connector/Response.java",
+        "class_name": "org.apache.catalina.connector.Response",
+        "method_name": "encodeRedirectURL",
+        "method_signature": "encodeRedirectURL(String url)",
+        "code": "@Override\n    public String encodeRedirectURL(String url) {\n        if (isEncodeable(toAbsolute(url))) {\n            return toEncoded(url, request.getSessionInternal().getIdInternal());\n        } else {\n            return url;\n        }\n    }",
+        "startline": 975,
+        "endline": 982
+      }
+    ]
   },
   {
     "repo": "apache/tomcat",
@@ -1530,7 +1658,17 @@
     "method_name": "testEncodeRedirectURL09",
     "code": "public void testEncodeRedirectURL09() throws Exception {\n        doTestEncodeRedirectURL(\"./.?x=/../../\", \"./.;jsessionid=1234?x=/../../\");\n    }",
     "matched_vulns": [],
-    "focal_methods": []
+    "focal_methods": [
+      {
+        "file_path": "java/org/apache/catalina/connector/Response.java",
+        "class_name": "org.apache.catalina.connector.Response",
+        "method_name": "encodeRedirectURL",
+        "method_signature": "encodeRedirectURL(String url)",
+        "code": "@Override\n    public String encodeRedirectURL(String url) {\n        if (isEncodeable(toAbsolute(url))) {\n            return toEncoded(url, request.getSessionInternal().getIdInternal());\n        } else {\n            return url;\n        }\n    }",
+        "startline": 975,
+        "endline": 982
+      }
+    ]
   },
   {
     "repo": "apache/tomcat",
@@ -1540,7 +1678,17 @@
     "method_name": "testEncodeRedirectURL10",
     "code": "public void testEncodeRedirectURL10() throws Exception {\n        doTestEncodeRedirectURL(\"./..?x=/../../\", \"./..;jsessionid=1234?x=/../../\");\n    }",
     "matched_vulns": [],
-    "focal_methods": []
+    "focal_methods": [
+      {
+        "file_path": "java/org/apache/catalina/connector/Response.java",
+        "class_name": "org.apache.catalina.connector.Response",
+        "method_name": "encodeRedirectURL",
+        "method_signature": "encodeRedirectURL(String url)",
+        "code": "@Override\n    public String encodeRedirectURL(String url) {\n        if (isEncodeable(toAbsolute(url))) {\n            return toEncoded(url, request.getSessionInternal().getIdInternal());\n        } else {\n            return url;\n        }\n    }",
+        "startline": 975,
+        "endline": 982
+      }
+    ]
   },
   {
     "repo": "apache/tomcat",
@@ -1550,7 +1698,17 @@
     "method_name": "testEncodeRedirectURL11",
     "code": "public void testEncodeRedirectURL11() throws Exception {\n        doTestEncodeRedirectURL(\"./..?x=/../..\", \"./..;jsessionid=1234?x=/../..\");\n    }",
     "matched_vulns": [],
-    "focal_methods": []
+    "focal_methods": [
+      {
+        "file_path": "java/org/apache/catalina/connector/Response.java",
+        "class_name": "org.apache.catalina.connector.Response",
+        "method_name": "encodeRedirectURL",
+        "method_signature": "encodeRedirectURL(String url)",
+        "code": "@Override\n    public String encodeRedirectURL(String url) {\n        if (isEncodeable(toAbsolute(url))) {\n            return toEncoded(url, request.getSessionInternal().getIdInternal());\n        } else {\n            return url;\n        }\n    }",
+        "startline": 975,
+        "endline": 982
+      }
+    ]
   },
   {
     "repo": "apache/tomcat",
@@ -1560,7 +1718,17 @@
     "method_name": "testEncodeRedirectURL14",
     "code": "public void testEncodeRedirectURL14() throws Exception {\n        doTestEncodeRedirectURL(\"./.#/../../\", \"./.;jsessionid=1234#/../../\");\n    }",
     "matched_vulns": [],
-    "focal_methods": []
+    "focal_methods": [
+      {
+        "file_path": "java/org/apache/catalina/connector/Response.java",
+        "class_name": "org.apache.catalina.connector.Response",
+        "method_name": "encodeRedirectURL",
+        "method_signature": "encodeRedirectURL(String url)",
+        "code": "@Override\n    public String encodeRedirectURL(String url) {\n        if (isEncodeable(toAbsolute(url))) {\n            return toEncoded(url, request.getSessionInternal().getIdInternal());\n        } else {\n            return url;\n        }\n    }",
+        "startline": 975,
+        "endline": 982
+      }
+    ]
   },
   {
     "repo": "apache/tomcat",
@@ -1570,7 +1738,17 @@
     "method_name": "testEncodeRedirectURL15",
     "code": "public void testEncodeRedirectURL15() throws Exception {\n        doTestEncodeRedirectURL(\"./..#/../../\", \"./..;jsessionid=1234#/../../\");\n    }",
     "matched_vulns": [],
-    "focal_methods": []
+    "focal_methods": [
+      {
+        "file_path": "java/org/apache/catalina/connector/Response.java",
+        "class_name": "org.apache.catalina.connector.Response",
+        "method_name": "encodeRedirectURL",
+        "method_signature": "encodeRedirectURL(String url)",
+        "code": "@Override\n    public String encodeRedirectURL(String url) {\n        if (isEncodeable(toAbsolute(url))) {\n            return toEncoded(url, request.getSessionInternal().getIdInternal());\n        } else {\n            return url;\n        }\n    }",
+        "startline": 975,
+        "endline": 982
+      }
+    ]
   },
   {
     "repo": "apache/tomcat",
@@ -1580,7 +1758,17 @@
     "method_name": "testEncodeRedirectURL16",
     "code": "public void testEncodeRedirectURL16() throws Exception {\n        doTestEncodeURL(\"./..#/../..\", \"./..;jsessionid=1234#/../..\");\n    }",
     "matched_vulns": [],
-    "focal_methods": []
+    "focal_methods": [
+      {
+        "file_path": "java/org/apache/catalina/connector/Response.java",
+        "class_name": "org.apache.catalina.connector.Response",
+        "method_name": "encodeRedirectURL",
+        "method_signature": "encodeRedirectURL(String url)",
+        "code": "@Override\n    public String encodeRedirectURL(String url) {\n        if (isEncodeable(toAbsolute(url))) {\n            return toEncoded(url, request.getSessionInternal().getIdInternal());\n        } else {\n            return url;\n        }\n    }",
+        "startline": 975,
+        "endline": 982
+      }
+    ]
   },
   {
     "repo": "apache/tomcat",
@@ -1829,7 +2017,17 @@
     "method_name": "rejectsPathTraversalWithoutExplicitDoubleDot",
     "code": "public void rejectsPathTraversalWithoutExplicitDoubleDot() {\n        String pattern = \"root/[conf]/[artifact]-[revision].[ext]\";\n        // forms revision/../ext after substitution\n        IvyPatternHelper.substitute(pattern, \"org\", \"module\", \"revision/\", \"artifact\", \"type\", \"./ext\", \"conf\");\n    }",
     "matched_vulns": [],
-    "focal_methods": []
+    "focal_methods": [
+      {
+        "file_path": "src/java/org/apache/ivy/core/IvyPatternHelper.java",
+        "class_name": "org.apache.ivy.core.IvyPatternHelper",
+        "method_name": "substitute",
+        "method_signature": "substitute(String pattern, String org, String module, String revision, String artifact, String type, String ext, String conf)",
+        "code": "public static String substitute(String pattern, String org, String module, String revision,\n            String artifact, String type, String ext, String conf) {\n        return substitute(pattern, org, module, null, revision, artifact, type, ext, conf,\n                null, null, null);\n    }",
+        "startline": 116,
+        "endline": 120
+      }
+    ]
   },
   {
     "repo": "apache/camel",
