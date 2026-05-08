@@ -1,8 +1,8 @@
 import re
 from typing import Optional
 
-from tree_sitter import Language, Parser, Node
 import tree_sitter_java as tsjava
+from tree_sitter import Language, Node, Parser
 
 JAVA_LANGUAGE = Language(tsjava.language())
 
@@ -137,6 +137,27 @@ def get_method_signature(method_node: Node) -> str:
             mod_str = " ".join(modifiers) + " " if modifiers else ""
             params.append(f"{ann_str}{mod_str}{type_name} {param_ident}")
     return _get_node_name(method_node) + "(" + ", ".join(params) + ")"
+
+
+def count_params(signature: str) -> int:
+    # Extract the content between the outermost parentheses
+    param_string = signature[signature.index('(') + 1: signature.rindex(')')].strip()
+
+    # Empty parameter list → 0 arguments
+    if not param_string:
+        return 0
+
+    # Count commas that are NOT inside angle brackets (generics)
+    depth = 0   # tracks nesting level of < >
+    count = 1   # at least one if params is non-empty
+    for ch in param_string:
+        if ch == '<':
+            depth += 1
+        elif ch == '>':
+            depth -= 1
+        elif ch == ',' and depth == 0:
+            count += 1
+    return count
 
 
 def _get_method_declarations(class_node: Node) -> list[Node]:

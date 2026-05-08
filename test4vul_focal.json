@@ -40,6 +40,15 @@
       {
         "file_path": "commandline/src/main/java/com/thoughtworks/go/util/command/CommandLine.java",
         "class_name": "com.thoughtworks.go.util.command.CommandLine",
+        "method_name": "createCommandLine",
+        "method_signature": "createCommandLine(String command)",
+        "code": "public static CommandLine createCommandLine(String command) {\n        return new CommandLine(command);\n    }",
+        "startline": 160,
+        "endline": 162
+      },
+      {
+        "file_path": "commandline/src/main/java/com/thoughtworks/go/util/command/CommandLine.java",
+        "class_name": "com.thoughtworks.go.util.command.CommandLine",
         "method_name": "execute",
         "method_signature": "execute(ConsoleOutputStreamConsumer outputStreamConsumer, EnvironmentVariableContext environmentVariableContext, ProcessTag processTag)",
         "code": "public ProcessWrapper execute(ConsoleOutputStreamConsumer outputStreamConsumer, EnvironmentVariableContext environmentVariableContext, ProcessTag processTag) {\n        ProcessWrapper process = createProcess(environmentVariableContext, outputStreamConsumer, processTag, ERROR_STREAM_PREFIX_FOR_CMDS);\n        process.typeInputToConsole(inputs);\n        return process;\n    }",
@@ -66,6 +75,15 @@
     "code": "void shouldBeAbleToRunCommandsFromRelativeDirectories() throws IOException {\n\n        File shellScript = Files.createFile(temporaryFolder.resolve(\"hello-world.sh\")).toFile();\n\n        Files.writeString(shellScript.toPath(), \"echo ${PWD}\", UTF_8);\n        assertThat(shellScript.setExecutable(true)).isTrue();\n\n        CommandLine line = CommandLine.createCommandLine(\"../hello-world.sh\").withWorkingDir(subFolder).withEncoding(UTF_8);\n\n        InMemoryStreamConsumer out = new InMemoryStreamConsumer();\n        line.execute(out, new EnvironmentVariableContext(), null).waitForExit();\n\n        assertThat(out.getAllOutput().trim()).endsWith(\"subFolder\");\n    }",
     "matched_vulns": [],
     "focal_methods": [
+      {
+        "file_path": "commandline/src/main/java/com/thoughtworks/go/util/command/CommandLine.java",
+        "class_name": "com.thoughtworks.go.util.command.CommandLine",
+        "method_name": "createCommandLine",
+        "method_signature": "createCommandLine(String command)",
+        "code": "public static CommandLine createCommandLine(String command) {\n        return new CommandLine(command);\n    }",
+        "startline": 160,
+        "endline": 162
+      },
       {
         "file_path": "commandline/src/main/java/com/thoughtworks/go/util/command/CommandLine.java",
         "class_name": "com.thoughtworks.go.util.command.CommandLine",
@@ -161,6 +179,24 @@
         "code": "@Override\n  public String buildRedirectAuthnRequest(AuthenticationRequest request, String relayState, boolean sign,\n                                          PrivateKey key, Algorithm algorithm) throws SAMLException {\n    AuthnRequestType authnRequest = toAuthnRequest(request, \"2.0\");\n    return buildRedirectRequest(PROTOCOL_OBJECT_FACTORY.createAuthnRequest(authnRequest), AuthnRequestType.class, relayState, sign, key, algorithm);\n  }",
         "startline": 463,
         "endline": 468
+      },
+      {
+        "file_path": "src/main/java/io/fusionauth/samlv2/service/DefaultSAMLv2Service.java",
+        "class_name": "io.fusionauth.samlv2.service.DefaultSAMLv2Service",
+        "method_name": "parseRequestPostBinding",
+        "method_signature": "parseRequestPostBinding(String encodedRequest, Function<AuthenticationRequest, PostBindingSignatureHelper> signatureHelperFunction)",
+        "code": "@Override\n  public AuthenticationRequest parseRequestPostBinding(String encodedRequest,\n                                                       Function<AuthenticationRequest, PostBindingSignatureHelper> signatureHelperFunction)\n      throws SAMLException {\n    byte[] xml = Base64.getMimeDecoder().decode(encodedRequest);\n    AuthnRequestParseResult result = parseRequest(xml);\n    PostBindingSignatureHelper signatureHelper = signatureHelperFunction.apply(result.request);\n    if (signatureHelper.verifySignature()) {\n      verifyEmbeddedSignature(result.document, signatureHelper.keySelector(), result.request, false);\n    }\n\n    return result.request;\n  }",
+        "startline": 610,
+        "endline": 622
+      },
+      {
+        "file_path": "src/main/java/io/fusionauth/samlv2/service/DefaultSAMLv2Service.java",
+        "class_name": "io.fusionauth.samlv2.service.DefaultSAMLv2Service",
+        "method_name": "parseRequestRedirectBinding",
+        "method_signature": "parseRequestRedirectBinding(String queryString, Function<AuthenticationRequest, RedirectBindingSignatureHelper> signatureHelperFunction)",
+        "code": "@Override\n  public AuthenticationRequest parseRequestRedirectBinding(String queryString,\n                                                           Function<AuthenticationRequest, RedirectBindingSignatureHelper> signatureHelperFunction)\n      throws SAMLException {\n    SAMLRequestParameters requestParameters = SAMLTools.parseQueryString(queryString);\n    AuthnRequestParseResult result = parseRequest(decodeAndInflate(requestParameters.urlDecodedSAMLRequest()));\n    RedirectBindingSignatureHelper signatureHelper = signatureHelperFunction.apply(result.request);\n    if (signatureHelper.verifySignature()) {\n      verifyRequestSignature(requestParameters, signatureHelper, result.request);\n    }\n\n    return result.request;\n  }",
+        "startline": 624,
+        "endline": 636
       }
     ]
   },
@@ -173,6 +209,15 @@
     "code": "public void parseRequest_externalDTD() throws Exception {\n    // Load an external DTD, fail, this is defined within the DOCTYPE, so the error will be with regards to the DOCTYPE.\n    Path tempFile = null;\n    try {\n      tempFile = Files.createTempFile(\"readThisFile\", \".tmp\");\n      try (BufferedWriter writer = new BufferedWriter(new FileWriter(tempFile.toFile()))) {\n        writer.write(\"You've been pwned.\");\n      }\n\n      DefaultSAMLv2Service service = new DefaultSAMLv2Service();\n      byte[] xml = Files.readAllBytes(Paths.get(\"src/test/xml/authn-request-external-dtd.xml\"));\n\n      // Set the filename in the XML\n      String xmlString = new String(xml);\n      xmlString = xmlString.replace(\"{{tempFile}}\", tempFile.toFile().getAbsolutePath());\n      xml = xmlString.getBytes(StandardCharsets.UTF_8);\n\n      String deflated = SAMLTools.deflateAndEncode(xml);\n      String queryString = \"SAMLRequest=\" + URLEncoder.encode(deflated, StandardCharsets.UTF_8);\n      AuthenticationRequest request = service.parseRequestRedirectBinding(queryString, authRequest -> new TestRedirectBindingSignatureHelper());\n      fail(\"Expected an exception because we are declaring a DOCTYPE. The issuer is now set to [\" + request.issuer + \"] which is not good.\");\n    } catch (SAMLException e) {\n      assertEquals(e.getMessage(), \"Unable to parse SAML v2.0 document.\");\n      assertEquals(e.getCause().getClass().getCanonicalName(), \"org.xml.sax.SAXParseException\");\n      assertEquals(e.getCause().getMessage(), \"DOCTYPE is disallowed when the feature \\\"http://apache.org/xml/features/disallow-doctype-decl\\\" set to true.\");\n    } finally {\n      if (tempFile != null) {\n        Files.deleteIfExists(tempFile);\n      }\n    }\n  }",
     "matched_vulns": [],
     "focal_methods": [
+      {
+        "file_path": "src/main/java/io/fusionauth/samlv2/service/DefaultSAMLv2Service.java",
+        "class_name": "io.fusionauth.samlv2.service.DefaultSAMLv2Service",
+        "method_name": "parseRequestRedirectBinding",
+        "method_signature": "parseRequestRedirectBinding(String queryString, Function<AuthenticationRequest, RedirectBindingSignatureHelper> signatureHelperFunction)",
+        "code": "@Override\n  public AuthenticationRequest parseRequestRedirectBinding(String queryString,\n                                                           Function<AuthenticationRequest, RedirectBindingSignatureHelper> signatureHelperFunction)\n      throws SAMLException {\n    SAMLRequestParameters requestParameters = SAMLTools.parseQueryString(queryString);\n    AuthnRequestParseResult result = parseRequest(decodeAndInflate(requestParameters.urlDecodedSAMLRequest()));\n    RedirectBindingSignatureHelper signatureHelper = signatureHelperFunction.apply(result.request);\n    if (signatureHelper.verifySignature()) {\n      verifyRequestSignature(requestParameters, signatureHelper, result.request);\n    }\n\n    return result.request;\n  }",
+        "startline": 624,
+        "endline": 636
+      },
       {
         "file_path": "src/main/java/io/fusionauth/samlv2/service/DefaultSAMLv2Service.java",
         "class_name": "io.fusionauth.samlv2.service.DefaultSAMLv2Service",
@@ -378,6 +423,24 @@
       {
         "file_path": "core/src/main/java/hudson/FilePath.java",
         "class_name": "hudson.FilePath",
+        "method_name": "unzip",
+        "method_signature": "unzip(final FilePath target)",
+        "code": "public void unzip(final FilePath target) throws IOException, InterruptedException {\n        // TODO: post release, re-unite two branches by introducing FileStreamCallable that resolves InputStream\n        if (channel != target.channel) { // local -> remote or remote->local\n            final RemoteInputStream in = new RemoteInputStream(read(), Flag.GREEDY);\n            target.act(new UnzipRemote(in));\n        } else { // local -> local or remote->remote\n            target.act(new UnzipLocal(this));\n        }\n    }",
+        "startline": 549,
+        "endline": 557
+      },
+      {
+        "file_path": "core/src/main/java/hudson/FilePath.java",
+        "class_name": "hudson.FilePath",
+        "method_name": "child",
+        "method_signature": "child(String relOrAbsolute)",
+        "code": "public @NonNull FilePath child(String relOrAbsolute) {\n        return new FilePath(this, relOrAbsolute);\n    }",
+        "startline": 1534,
+        "endline": 1536
+      },
+      {
+        "file_path": "core/src/main/java/hudson/FilePath.java",
+        "class_name": "hudson.FilePath",
         "method_name": "exists",
         "method_signature": "exists()",
         "code": "public boolean exists() throws IOException, InterruptedException {\n        return act(new Exists());\n    }",
@@ -448,6 +511,24 @@
         "code": "public int zip(OutputStream out, DirScanner scanner, String verificationRoot, String prefix, OpenOption... openOptions) throws IOException, InterruptedException {\n        ArchiverFactory archiverFactory = prefix == null ? ArchiverFactory.ZIP : ArchiverFactory.createZipWithPrefix(prefix, openOptions);\n        return archive(archiverFactory, out, scanner, verificationRoot, openOptions);\n    }",
         "startline": 486,
         "endline": 489
+      },
+      {
+        "file_path": "core/src/main/java/hudson/FilePath.java",
+        "class_name": "hudson.FilePath",
+        "method_name": "unzip",
+        "method_signature": "unzip(final FilePath target)",
+        "code": "public void unzip(final FilePath target) throws IOException, InterruptedException {\n        // TODO: post release, re-unite two branches by introducing FileStreamCallable that resolves InputStream\n        if (channel != target.channel) { // local -> remote or remote->local\n            final RemoteInputStream in = new RemoteInputStream(read(), Flag.GREEDY);\n            target.act(new UnzipRemote(in));\n        } else { // local -> local or remote->remote\n            target.act(new UnzipLocal(this));\n        }\n    }",
+        "startline": 549,
+        "endline": 557
+      },
+      {
+        "file_path": "core/src/main/java/hudson/FilePath.java",
+        "class_name": "hudson.FilePath",
+        "method_name": "child",
+        "method_signature": "child(String relOrAbsolute)",
+        "code": "public @NonNull FilePath child(String relOrAbsolute) {\n        return new FilePath(this, relOrAbsolute);\n    }",
+        "startline": 1534,
+        "endline": 1536
       },
       {
         "file_path": "core/src/main/java/hudson/FilePath.java",
@@ -717,6 +798,33 @@
         "code": "public Map<Descriptor<UserProperty>, UserProperty> getProperties() {\n        return Descriptor.toMap(properties);\n    }",
         "startline": 337,
         "endline": 339
+      },
+      {
+        "file_path": "core/src/main/java/hudson/model/User.java",
+        "class_name": "hudson.model.User",
+        "method_name": "addProperty",
+        "method_signature": "addProperty(UserProperty p)",
+        "code": "public synchronized void addProperty(@NonNull UserProperty p) throws IOException {\n        UserProperty old = getProperty(p.getClass());\n        List<UserProperty> ps = new ArrayList<>(properties);\n        if (old != null)\n            ps.remove(old);\n        ps.add(p);\n        p.setUser(this);\n        properties = ps;\n        save();\n    }",
+        "startline": 344,
+        "endline": 353
+      },
+      {
+        "file_path": "core/src/main/java/hudson/model/User.java",
+        "class_name": "hudson.model.User",
+        "method_name": "get",
+        "method_signature": "get(String idOrFullName)",
+        "code": "@Deprecated\n    public static @NonNull User get(String idOrFullName) {\n        return getOrCreateByIdOrFullName(idOrFullName);\n    }",
+        "startline": 604,
+        "endline": 607
+      },
+      {
+        "file_path": "core/src/main/java/hudson/model/User.java",
+        "class_name": "hudson.model.User",
+        "method_name": "get",
+        "method_signature": "get(org.acegisecurity.Authentication a)",
+        "code": "@Deprecated\n    public static @CheckForNull User get(@CheckForNull org.acegisecurity.Authentication a) {\n        return get2(a != null ? a.toSpring() : null);\n    }",
+        "startline": 659,
+        "endline": 662
       }
     ]
   },
@@ -737,6 +845,15 @@
         "code": "public final void checkAnyPermission(@NonNull Permission... permissions) {\n        if (permissions.length == 0) {\n            throw new IllegalArgumentException(\"At least one permission must be provided\");\n        }\n\n        boolean failed = !hasAnyPermission(permissions);\n\n        Authentication authentication = Jenkins.getAuthentication2();\n        if (failed) { // we know that none of the permissions are granted\n            Set<Permission> enabledPermissions = new LinkedHashSet<>();\n            for (Permission p : permissions) {\n                while (!p.enabled && p.impliedBy != null) {\n                    p = p.impliedBy;\n                }\n                enabledPermissions.add(p);\n            }\n            String permissionsDisplayName = enabledPermissions.stream()\n                    .map(p -> p.group.title + \"/\" + p.name)\n                    .collect(Collectors.joining(\", \"));\n\n            String errorMessage;\n            if (enabledPermissions.size() == 1) {\n                errorMessage = Messages.AccessDeniedException2_MissingPermission(authentication.getName(), permissionsDisplayName);\n            } else {\n                errorMessage = Messages.AccessDeniedException_MissingPermissions(authentication.getName(), permissionsDisplayName);\n            }\n\n            throw new AccessDeniedException(errorMessage);\n        }\n    }",
         "startline": 96,
         "endline": 125
+      },
+      {
+        "file_path": "core/src/main/java/hudson/security/ACL.java",
+        "class_name": "hudson.security.ACL",
+        "method_name": "as2",
+        "method_signature": "as2(Authentication auth)",
+        "code": "@NonNull\n    public static ACLContext as2(@NonNull Authentication auth) {\n        final ACLContext context = new ACLContext(SecurityContextHolder.getContext());\n        SecurityContextHolder.setContext(new NonSerializableSecurityContext(auth));\n        return context;\n    }",
+        "startline": 481,
+        "endline": 486
       }
     ]
   },
@@ -757,6 +874,15 @@
         "code": "public final void checkAnyPermission(@NonNull Permission... permissions) {\n        if (permissions.length == 0) {\n            throw new IllegalArgumentException(\"At least one permission must be provided\");\n        }\n\n        boolean failed = !hasAnyPermission(permissions);\n\n        Authentication authentication = Jenkins.getAuthentication2();\n        if (failed) { // we know that none of the permissions are granted\n            Set<Permission> enabledPermissions = new LinkedHashSet<>();\n            for (Permission p : permissions) {\n                while (!p.enabled && p.impliedBy != null) {\n                    p = p.impliedBy;\n                }\n                enabledPermissions.add(p);\n            }\n            String permissionsDisplayName = enabledPermissions.stream()\n                    .map(p -> p.group.title + \"/\" + p.name)\n                    .collect(Collectors.joining(\", \"));\n\n            String errorMessage;\n            if (enabledPermissions.size() == 1) {\n                errorMessage = Messages.AccessDeniedException2_MissingPermission(authentication.getName(), permissionsDisplayName);\n            } else {\n                errorMessage = Messages.AccessDeniedException_MissingPermissions(authentication.getName(), permissionsDisplayName);\n            }\n\n            throw new AccessDeniedException(errorMessage);\n        }\n    }",
         "startline": 96,
         "endline": 125
+      },
+      {
+        "file_path": "core/src/main/java/hudson/security/ACL.java",
+        "class_name": "hudson.security.ACL",
+        "method_name": "as2",
+        "method_signature": "as2(Authentication auth)",
+        "code": "@NonNull\n    public static ACLContext as2(@NonNull Authentication auth) {\n        final ACLContext context = new ACLContext(SecurityContextHolder.getContext());\n        SecurityContextHolder.setContext(new NonSerializableSecurityContext(auth));\n        return context;\n    }",
+        "startline": 481,
+        "endline": 486
       }
     ]
   },
@@ -1362,6 +1488,15 @@
       {
         "file_path": "element-connector/src/main/java/org/eclipse/californium/elements/util/Asn1DerDecoder.java",
         "class_name": "org.eclipse.californium.elements.util.Asn1DerDecoder",
+        "method_name": "readPrivateKey",
+        "method_signature": "readPrivateKey(final byte[] data)",
+        "code": "public static Keys readPrivateKey(final byte[] data) throws GeneralSecurityException {\n\tKeys keys = null;\n\tString algorithm = readPrivateKeyAlgorithm(data);\n\tif (algorithm != null) {\n\t\tif (algorithm == JceNames.ED25519v2 || algorithm == JceNames.ED448v2) {\n\t\t\tkeys = readEdDsaPrivateKeyV2(data);\n\t\t} else if (algorithm == JceNames.ECv2) {\n\t\t\tkeys = readEcPrivateKeyV2(data);\n\t\t} else if (algorithm == JceNames.EC) {\n\t\t\tkeys = readEcPrivateKeyV1(data);\n\t\t} else {\n\t\t\tKeyFactory factory = getKeyFactory(algorithm);\n\t\t\tEncodedKeySpec privateKeySpec = new PKCS8EncodedKeySpec(data);\n\t\t\tkeys = new Keys();\n\t\t\tkeys.privateKey = factory.generatePrivate(privateKeySpec);\n\t\t}\n\t}\n\treturn keys;\n}",
+        "startline": 594,
+        "endline": 612
+      },
+      {
+        "file_path": "element-connector/src/main/java/org/eclipse/californium/elements/util/Asn1DerDecoder.java",
+        "class_name": "org.eclipse.californium.elements.util.Asn1DerDecoder",
         "method_name": "checkEcDsaSignature",
         "method_signature": "checkEcDsaSignature(byte[] signature, PublicKey publicKey)",
         "code": "public static void checkEcDsaSignature(byte[] signature, PublicKey publicKey) throws GeneralSecurityException {\n\tDatagramReader reader = new DatagramReader(signature, false);\n\treader = SEQUENCE.createRangeReader(reader, false);\n\tbyte[] valueR = INTEGER.read(reader, false);\n\tbyte[] valueS = INTEGER.read(reader, false);\n\tBigInteger order = ((ECPublicKey) publicKey).getParams().getOrder();\n\tcheckSignatureInteger(\"R\", valueR, order);\n\tcheckSignatureInteger(\"S\", valueS, order);\n}",
@@ -1448,7 +1583,17 @@
     "method_name": "shouldNotBeVulnerableToCVE_2022_42889",
     "code": "void shouldNotBeVulnerableToCVE_2022_42889() throws IOException {\n        StringLookup dummyLookup = (x) -> null;\n        SubstitutingSourceProvider provider = new SubstitutingSourceProvider(new DummySourceProvider(), new StringSubstitutor(dummyLookup));\n\n        assertThat(provider.open(\"foo: ${script:javascript:3 + 4}\")).hasSameContentAs(new ByteArrayInputStream(\"foo: ${script:javascript:3 + 4}\".getBytes(StandardCharsets.UTF_8)));\n    }",
     "matched_vulns": [],
-    "focal_methods": []
+    "focal_methods": [
+      {
+        "file_path": "dropwizard-configuration/src/main/java/io/dropwizard/configuration/SubstitutingSourceProvider.java",
+        "class_name": "io.dropwizard.configuration.SubstitutingSourceProvider",
+        "method_name": "open",
+        "method_signature": "open(String path)",
+        "code": "@Override\n    public InputStream open(String path) throws IOException {\n        try (InputStream in = delegate.open(path)) {\n            final String config = new String(in.readAllBytes(), StandardCharsets.UTF_8);\n            final String substituted = substitutor.replace(config);\n\n            return new ByteArrayInputStream(substituted.getBytes(StandardCharsets.UTF_8));\n        }\n    }",
+        "startline": 34,
+        "endline": 42
+      }
+    ]
   },
   {
     "repo": "gturri/aXMLRPC",
@@ -1902,6 +2047,15 @@
       {
         "file_path": "rt/rs/security/jose-parent/jose/src/main/java/org/apache/cxf/rs/security/jose/jwk/JwkUtils.java",
         "class_name": "org.apache.cxf.rs.security.jose.jwk.JwkUtils",
+        "method_name": "toRSAPublicKey",
+        "method_signature": "toRSAPublicKey(JsonWebKey jwk)",
+        "code": "public static RSAPublicKey toRSAPublicKey(JsonWebKey jwk) {\n        return toRSAPublicKey(jwk, false);\n    }",
+        "startline": 357,
+        "endline": 359
+      },
+      {
+        "file_path": "rt/rs/security/jose-parent/jose/src/main/java/org/apache/cxf/rs/security/jose/jwk/JwkUtils.java",
+        "class_name": "org.apache.cxf.rs.security.jose.jwk.JwkUtils",
         "method_name": "fromRSAPublicKey",
         "method_signature": "fromRSAPublicKey(RSAPublicKey pk, String algo)",
         "code": "public static JsonWebKey fromRSAPublicKey(RSAPublicKey pk, String algo) {\n        return fromRSAPublicKey(pk, algo, null);\n    }",
@@ -2187,7 +2341,26 @@
     "method_name": "testExternalDTD",
     "code": "public void testExternalDTD() {\n        String payload = \"<?xml version=\\\"1.0\\\" encoding=\\\"UTF-8\\\"?>\"\n                + \"<!DOCTYPE root [\\n<!ENTITY % remote SYSTEM \\\"http://127.0.0.1:9999/eval.xml\\\">\\n%remote;]>\\n\"\n                + \"<root></root>\";\n        StreamSource streamSource = new StreamSource(new StringReader(payload));\n        String msg = \"\";\n        try {\n            XMPParser.parseXMP(streamSource);\n        } catch (TransformerException e) {\n            msg = e.getMessage();\n        }\n        assertTrue(msg, msg.contains(\"accessExternalDTD\"));\n    }",
     "matched_vulns": [],
-    "focal_methods": []
+    "focal_methods": [
+      {
+        "file_path": "src/main/java/org/apache/xmlgraphics/xmp/XMPParser.java",
+        "class_name": "org.apache.xmlgraphics.xmp.XMPParser",
+        "method_name": "parseXMP",
+        "method_signature": "parseXMP(URL url)",
+        "code": "public static Metadata parseXMP(URL url) throws TransformerException {\n        return parseXMP(new StreamSource(url.toExternalForm()));\n    }",
+        "startline": 46,
+        "endline": 48
+      },
+      {
+        "file_path": "src/main/java/org/apache/xmlgraphics/xmp/XMPParser.java",
+        "class_name": "org.apache.xmlgraphics.xmp.XMPParser",
+        "method_name": "parseXMP",
+        "method_signature": "parseXMP(Source src)",
+        "code": "public static Metadata parseXMP(Source src) throws TransformerException {\n        TransformerFactory tFactory = TransformerFactory.newInstance();\n        tFactory.setAttribute(XMLConstants.ACCESS_EXTERNAL_DTD, \"\");\n        tFactory.setAttribute(XMLConstants.ACCESS_EXTERNAL_STYLESHEET, \"\");\n        Transformer transformer = tFactory.newTransformer();\n        XMPHandler handler = createXMPHandler();\n        SAXResult res = new SAXResult(handler);\n        transformer.transform(src, res);\n        return handler.getMetadata();\n    }",
+        "startline": 56,
+        "endline": 65
+      }
+    ]
   },
   {
     "repo": "apache/tika",
@@ -2641,7 +2814,17 @@
     "method_name": "shouldEscapeMaliciousHtmlInputOnForm",
     "code": "public void shouldEscapeMaliciousHtmlInputOnForm() {\n        //given\n        String malicious = \"\\\"><script>alert('Bad thing);</script><form \";\n\n        //when\n        final String formHtml = SAML2Proxy.getAutoSubmittingFormHtml(URLEncDec.encode(malicious));\n\n        //then\n        // The malicious code should not be present\n        assertThat(formHtml).doesNotContain(malicious);\n        // However, it should be preserved when parsed again\n        assertThat(URLEncDec.decode(getFormAction(formHtml))).contains(malicious);\n    }",
     "matched_vulns": [],
-    "focal_methods": []
+    "focal_methods": [
+      {
+        "file_path": "openam-authentication/openam-auth-saml2/src/main/java/org/forgerock/openam/authentication/modules/saml2/SAML2Proxy.java",
+        "class_name": "org.forgerock.openam.authentication.modules.saml2.SAML2Proxy",
+        "method_name": "getAutoSubmittingFormHtml",
+        "method_signature": "getAutoSubmittingFormHtml(final String value)",
+        "code": "@VisibleForTesting\n    protected static String getAutoSubmittingFormHtml(final String value) {\n        StringBuilder html = new StringBuilder();\n\n        html.append(\"<html>\\n\").append(\"<body onLoad=\\\"\").append(\"document.postform.submit()\").append(\"\\\">\\n\");\n        html.append(\"<form name=\\\"postform\\\" action=\\\"\").append(ESAPI.encoder().encodeForHTMLAttribute(value))\n            .append(\"\\\" method=\\\"post\\\"\").append(\">\\n\");\n        html.append(\"<noscript>\\n<center>\\n\");\n        html.append(\"<p>Your browser does not have JavaScript enabled, \");\n        html.append(\"you must click the button below to continue</p>\\n\");\n        html.append(\"<input type=\\\"submit\\\" value=\\\"submit\\\" />\\n\");\n        html.append(\"</center>\\n</noscript>\\n\").append(\"</form>\\n\").append(\"</body>\\n\").append(\"</html>\\n\");\n\n        return html.toString();\n    }",
+        "startline": 307,
+        "endline": 321
+      }
+    ]
   },
   {
     "repo": "BigBadaboom/androidsvg",
@@ -3025,7 +3208,17 @@
     "method_name": "testFullPath",
     "code": "void testFullPath() {\n\tassertThat(HttpOperations.resolvePath(\"http://localhost:8080\")).isEqualTo(\"\");\n\tassertThat(HttpOperations.resolvePath(\"http://localhost:8080/\")).isEqualTo(\"/\");\n\tassertThat(HttpOperations.resolvePath(\"http://localhost:8080//\")).isEqualTo(\"//\");\n\tassertThat(HttpOperations.resolvePath(\"http://localhost:8080///\")).isEqualTo(\"///\");\n\tassertThat(HttpOperations.resolvePath(\"http://localhost:8080/a\")).isEqualTo(\"/a\");\n\tassertThat(HttpOperations.resolvePath(\"http://localhost:8080/a/\")).isEqualTo(\"/a/\");\n\tassertThat(HttpOperations.resolvePath(\"http://localhost:8080/?b\")).isEqualTo(\"/\");\n\tassertThat(HttpOperations.resolvePath(\"http://localhost:8080/a?b\")).isEqualTo(\"/a\");\n\tassertThat(HttpOperations.resolvePath(\"http://localhost:8080/#b\")).isEqualTo(\"/\");\n\tassertThat(HttpOperations.resolvePath(\"http://localhost:8080/a#b\")).isEqualTo(\"/a\");\n\tassertThat(HttpOperations.resolvePath(\"http://localhost:8080/a?b#c\")).isEqualTo(\"/a\");\n\tassertThat(HttpOperations.resolvePath(\"http://localhost:8080/a%20b\")).isEqualTo(\"/a b\");\n\tassertThat(HttpOperations.resolvePath(\"http://localhost:8080/a?b={}\")).isEqualTo(\"/a\");\n\n\tassertThat(HttpOperations.resolvePath(\"localhost:8080\")).isEqualTo(\"\");\n\tassertThat(HttpOperations.resolvePath(\"localhost:8080/\")).isEqualTo(\"/\");\n\tassertThat(HttpOperations.resolvePath(\"localhost:8080//\")).isEqualTo(\"//\");\n\tassertThat(HttpOperations.resolvePath(\"localhost:8080///\")).isEqualTo(\"///\");\n\tassertThat(HttpOperations.resolvePath(\"localhost:8080/a\")).isEqualTo(\"/a\");\n\tassertThat(HttpOperations.resolvePath(\"localhost:8080/a/\")).isEqualTo(\"/a/\");\n\tassertThat(HttpOperations.resolvePath(\"localhost:8080/?b\")).isEqualTo(\"/\");\n\tassertThat(HttpOperations.resolvePath(\"localhost:8080/a?b\")).isEqualTo(\"/a\");\n\tassertThat(HttpOperations.resolvePath(\"localhost:8080/#b\")).isEqualTo(\"/\");\n\tassertThat(HttpOperations.resolvePath(\"localhost:8080/a#b\")).isEqualTo(\"/a\");\n\tassertThat(HttpOperations.resolvePath(\"localhost:8080/a?b#c\")).isEqualTo(\"/a\");\n\tassertThat(HttpOperations.resolvePath(\"localhost:8080/a%20b\")).isEqualTo(\"/a b\");\n\tassertThat(HttpOperations.resolvePath(\"localhost:8080/a?b={}\")).isEqualTo(\"/a\");\n\n\tassertThat(HttpOperations.resolvePath(\"\")).isEqualTo(\"\");\n\tassertThat(HttpOperations.resolvePath(\"/\")).isEqualTo(\"/\");\n\tassertThat(HttpOperations.resolvePath(\"//\")).isEqualTo(\"//\");\n\tassertThat(HttpOperations.resolvePath(\"///\")).isEqualTo(\"///\");\n\tassertThat(HttpOperations.resolvePath(\"/a\")).isEqualTo(\"/a\");\n\tassertThat(HttpOperations.resolvePath(\"/a/\")).isEqualTo(\"/a/\");\n\tassertThat(HttpOperations.resolvePath(\"/?b\")).isEqualTo(\"/\");\n\tassertThat(HttpOperations.resolvePath(\"/a?b\")).isEqualTo(\"/a\");\n\tassertThat(HttpOperations.resolvePath(\"/#b\")).isEqualTo(\"/\");\n\tassertThat(HttpOperations.resolvePath(\"/a#b\")).isEqualTo(\"/a\");\n\tassertThat(HttpOperations.resolvePath(\"/a?b#c\")).isEqualTo(\"/a\");\n\tassertThat(HttpOperations.resolvePath(\"/a%20b\")).isEqualTo(\"/a b\");\n\tassertThat(HttpOperations.resolvePath(\"/a?b={}\")).isEqualTo(\"/a\");\n}",
     "matched_vulns": [],
-    "focal_methods": []
+    "focal_methods": [
+      {
+        "file_path": "reactor-netty-http/src/main/java/reactor/netty/http/HttpOperations.java",
+        "class_name": "reactor.netty.http.HttpOperations",
+        "method_name": "resolvePath",
+        "method_signature": "resolvePath(String uri)",
+        "code": "public static String resolvePath(String uri) {\n\tObjects.requireNonNull(uri, \"uri\");\n\n\tString tempUri = uri;\n\n\tint index = tempUri.indexOf('?');\n\tif (index > -1) {\n\t\ttempUri = tempUri.substring(0, index);\n\t}\n\n\tindex = tempUri.indexOf('#');\n\tif (index > -1) {\n\t\ttempUri = tempUri.substring(0, index);\n\t}\n\n\tif (tempUri.isEmpty()) {\n\t\treturn tempUri;\n\t}\n\n\tif (tempUri.charAt(0) == '/') {\n\t\tif (tempUri.length() == 1) {\n\t\t\treturn tempUri;\n\t\t}\n\t\ttempUri = \"http://localhost:8080\" + tempUri;\n\t}\n\telse if (!SCHEME_PATTERN.matcher(tempUri).matches()) {\n\t\ttempUri = \"http://\" + tempUri;\n\t}\n\n\treturn URI.create(tempUri)\n\t          .getPath();\n}",
+        "startline": 396,
+        "endline": 427
+      }
+    ]
   },
   {
     "repo": "opensearch-project/OpenSearch",
@@ -3405,7 +3598,17 @@
     "matched_vulns": [
       "CVE-2020-1956"
     ],
-    "focal_methods": []
+    "focal_methods": [
+      {
+        "file_path": "src/core-common/src/main/java/org/apache/kylin/common/util/StringHelper.java",
+        "class_name": "org.apache.kylin.common.util.StringHelper",
+        "method_name": "validateShellArgument",
+        "method_signature": "validateShellArgument(String s)",
+        "code": "public static boolean validateShellArgument(String s) {\n        return Pattern.compile(\"^[a-zA-Z0-9_./-]+$\").matcher(s).matches();\n    }",
+        "startline": 160,
+        "endline": 162
+      }
+    ]
   },
   {
     "repo": "apache/brooklyn-server",
@@ -3417,7 +3620,26 @@
     "matched_vulns": [
       "CVE-2016-8744"
     ],
-    "focal_methods": []
+    "focal_methods": [
+      {
+        "file_path": "utils/common/src/main/java/org/apache/brooklyn/util/yaml/Yamls.java",
+        "class_name": "org.apache.brooklyn.util.yaml.Yamls",
+        "method_name": "parseAll",
+        "method_signature": "parseAll(String yaml)",
+        "code": "@SuppressWarnings(\"unchecked\")\n    public static Iterable<Object> parseAll(String yaml) {\n        Iterable<Object> result = newYaml().loadAll(yaml);\n        return getAs(result, List.class);\n    }",
+        "startline": 213,
+        "endline": 217
+      },
+      {
+        "file_path": "utils/common/src/main/java/org/apache/brooklyn/util/yaml/Yamls.java",
+        "class_name": "org.apache.brooklyn.util.yaml.Yamls",
+        "method_name": "parseAll",
+        "method_signature": "parseAll(Reader yaml)",
+        "code": "@SuppressWarnings(\"unchecked\")\n    public static Iterable<Object> parseAll(Reader yaml) {\n        Iterable<Object> result = newYaml().loadAll(yaml);\n        return getAs(result, List.class);\n    }",
+        "startline": 220,
+        "endline": 224
+      }
+    ]
   },
   {
     "repo": "apache/brooklyn-server",
@@ -3429,7 +3651,26 @@
     "matched_vulns": [
       "CVE-2016-8744"
     ],
-    "focal_methods": []
+    "focal_methods": [
+      {
+        "file_path": "utils/common/src/main/java/org/apache/brooklyn/util/yaml/Yamls.java",
+        "class_name": "org.apache.brooklyn.util.yaml.Yamls",
+        "method_name": "parseAll",
+        "method_signature": "parseAll(String yaml)",
+        "code": "@SuppressWarnings(\"unchecked\")\n    public static Iterable<Object> parseAll(String yaml) {\n        Iterable<Object> result = newYaml().loadAll(yaml);\n        return getAs(result, List.class);\n    }",
+        "startline": 213,
+        "endline": 217
+      },
+      {
+        "file_path": "utils/common/src/main/java/org/apache/brooklyn/util/yaml/Yamls.java",
+        "class_name": "org.apache.brooklyn.util.yaml.Yamls",
+        "method_name": "parseAll",
+        "method_signature": "parseAll(Reader yaml)",
+        "code": "@SuppressWarnings(\"unchecked\")\n    public static Iterable<Object> parseAll(Reader yaml) {\n        Iterable<Object> result = newYaml().loadAll(yaml);\n        return getAs(result, List.class);\n    }",
+        "startline": 220,
+        "endline": 224
+      }
+    ]
   },
   {
     "repo": "apache/cassandra",
@@ -3453,7 +3694,26 @@
     "matched_vulns": [
       "CVE-2013-2251"
     ],
-    "focal_methods": []
+    "focal_methods": [
+      {
+        "file_path": "core/src/main/java/org/apache/struts2/ognl/OgnlUtil.java",
+        "class_name": "org.apache.struts2.ognl.OgnlUtil",
+        "method_name": "getValue",
+        "method_signature": "getValue(final String name, final Map<String, Object> context, final Object root)",
+        "code": "public Object getValue(final String name, final Map<String, Object> context, final Object root) throws OgnlException {\n        return getValue(name, context, root, null);\n    }",
+        "startline": 395,
+        "endline": 397
+      },
+      {
+        "file_path": "core/src/main/java/org/apache/struts2/ognl/OgnlUtil.java",
+        "class_name": "org.apache.struts2.ognl.OgnlUtil",
+        "method_name": "createDefaultContext",
+        "method_signature": "createDefaultContext(Object root)",
+        "code": "protected Map<String, Object> createDefaultContext(Object root) {\n        return createDefaultContext(root, null);\n    }",
+        "startline": 713,
+        "endline": 715
+      }
+    ]
   },
   {
     "repo": "apache/struts",
@@ -3465,7 +3725,26 @@
     "matched_vulns": [
       "CVE-2013-6348"
     ],
-    "focal_methods": []
+    "focal_methods": [
+      {
+        "file_path": "core/src/main/java/org/apache/struts2/dispatcher/mapper/DefaultActionMapper.java",
+        "class_name": "org.apache.struts2.dispatcher.mapper.DefaultActionMapper",
+        "method_name": "cleanupNamespaceName",
+        "method_signature": "cleanupNamespaceName(final String rawNamespace)",
+        "code": "protected String cleanupNamespaceName(final String rawNamespace) {\n        if (allowedNamespaceNames.matcher(rawNamespace).matches()) {\n            return rawNamespace;\n        } else {\n            LOG.warn(\n                \"{} did not match allowed namespace names {} - default namespace {} will be used!\",\n                rawNamespace, allowedNamespaceNames, defaultNamespaceName\n            );\n            return defaultNamespaceName;\n        }\n    }",
+        "startline": 407,
+        "endline": 417
+      },
+      {
+        "file_path": "core/src/main/java/org/apache/struts2/dispatcher/mapper/DefaultActionMapper.java",
+        "class_name": "org.apache.struts2.dispatcher.mapper.DefaultActionMapper",
+        "method_name": "cleanupActionName",
+        "method_signature": "cleanupActionName(final String rawActionName)",
+        "code": "protected String cleanupActionName(final String rawActionName) {\n        if (allowedActionNames.matcher(rawActionName).matches()) {\n            return rawActionName;\n        } else {\n            LOG.warn(\"{} did not match allowed action names {} - default action {} will be used!\", rawActionName, allowedActionNames, defaultActionName);\n            return defaultActionName;\n        }\n    }",
+        "startline": 425,
+        "endline": 432
+      }
+    ]
   },
   {
     "repo": "apache/storm",
@@ -3562,7 +3841,17 @@
     "matched_vulns": [
       "CVE-2013-6430"
     ],
-    "focal_methods": []
+    "focal_methods": [
+      {
+        "file_path": "spring-web/src/main/java/org/springframework/web/util/JavaScriptUtils.java",
+        "class_name": "org.springframework.web.util.JavaScriptUtils",
+        "method_name": "javaScriptEscape",
+        "method_signature": "javaScriptEscape(String input)",
+        "code": "public static String javaScriptEscape(String input) {\n\tStringBuilder filtered = new StringBuilder(input.length());\n\tchar prevChar = '\\u0000';\n\tchar c;\n\tfor (int i = 0; i < input.length(); i++) {\n\t\tc = input.charAt(i);\n\t\tif (c == '\"') {\n\t\t\tfiltered.append(\"\\\\\\\"\");\n\t\t}\n\t\telse if (c == '\\'') {\n\t\t\tfiltered.append(\"\\\\'\");\n\t\t}\n\t\telse if (c == '\\\\') {\n\t\t\tfiltered.append(\"\\\\\\\\\");\n\t\t}\n\t\telse if (c == '/') {\n\t\t\tfiltered.append(\"\\\\/\");\n\t\t}\n\t\telse if (c == '\\t') {\n\t\t\tfiltered.append(\"\\\\t\");\n\t\t}\n\t\telse if (c == '\\n') {\n\t\t\tif (prevChar != '\\r') {\n\t\t\t\tfiltered.append(\"\\\\n\");\n\t\t\t}\n\t\t}\n\t\telse if (c == '\\r') {\n\t\t\tfiltered.append(\"\\\\n\");\n\t\t}\n\t\telse if (c == '\\f') {\n\t\t\tfiltered.append(\"\\\\f\");\n\t\t}\n\t\telse if (c == '\\b') {\n\t\t\tfiltered.append(\"\\\\b\");\n\t\t}\n\t\t// No '\\v' in Java, use octal value for VT ascii char\n\t\telse if (c == '\\013') {\n\t\t\tfiltered.append(\"\\\\v\");\n\t\t}\n\t\telse if (c == '<') {\n\t\t\tfiltered.append(\"\\\\u003C\");\n\t\t}\n\t\telse if (c == '>') {\n\t\t\tfiltered.append(\"\\\\u003E\");\n\t\t}\n\t\t// Unicode for PS (line terminator in ECMA-262)\n\t\telse if (c == '\\u2028') {\n\t\t\tfiltered.append(\"\\\\u2028\");\n\t\t}\n\t\t// Unicode for LS (line terminator in ECMA-262)\n\t\telse if (c == '\\u2029') {\n\t\t\tfiltered.append(\"\\\\u2029\");\n\t\t}\n\t\telse {\n\t\t\tfiltered.append(c);\n\t\t}\n\t\tprevChar = c;\n\n\t}\n\treturn filtered.toString();\n}",
+        "startline": 39,
+        "endline": 99
+      }
+    ]
   },
   {
     "repo": "spring-projects/spring-webflow",

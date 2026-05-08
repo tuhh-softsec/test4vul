@@ -3,7 +3,7 @@ import re
 import jellyfish
 from tqdm import tqdm
 
-from test4vul.parsing import get_invocations
+from test4vul.parsing import count_params, get_invocations
 
 
 def get_substrings_method_name(method_name: str):
@@ -52,13 +52,11 @@ def measure_focal_relevance(prod_method_signature: str, prod_class_fqn: str, tes
 
     invocation_matches = []
     for inv in invocations_in_test:
-        arg_count = prod_method_signature.count(",")
-        if arg_count > 0:
-            arg_count += 1
+        param_count = count_params(prod_method_signature)
         if "..." in prod_method_signature:
-            arg_match = inv["args"] >= arg_count - 1
+            arg_match = inv["args"] >= param_count - 1
         else:
-            arg_match = inv["args"] == arg_count
+            arg_match = inv["args"] == param_count
         matches = {
             "invocationNameMatch": int(inv["name"] == prod_method_name),
             "invocationArgsMatch": int(arg_match),
