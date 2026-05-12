@@ -60,7 +60,7 @@ def retrieve_methods_of_top_class_from_source(
         if show_errors:
             print("- Error during parsing")
         return []
-    for class_node in _direct_children_of_type(root, "class_declaration"):
+    for class_node in _direct_children_of_type(root, "class_declaration", "enum_declaration"):
         for method_node in _get_method_declarations(class_node):
             if full_info:
                 method_text = method_node.text.decode("utf-8")
@@ -184,7 +184,7 @@ def retrieve_class_method_nodes_from_source(
     except Exception:
         return None, None
 
-    for class_node in _direct_children_of_type(root, "class_declaration"):
+    for class_node in _direct_children_of_type(root, "class_declaration", "enum_declaration"):
         if get_class_fqn(class_node) != class_fqn:
             continue
         method_declarations = _get_method_declarations(class_node)
