@@ -63,8 +63,15 @@ def measure_focal_relevance(prod_method_signature: str, prod_class_fqn: str, tes
             "invocationTypeMatch": int(inv["type"] == prod_class_name)
         }
         invocation_matches.append(matches)
-    best_match = max(invocation_matches, key=lambda x: int("".join(map(str, x.values())), 2))
-    scores.update(best_match)
+    if len(invocation_matches) == 0:
+        scores.update({
+            "invocationNameMatch": 0,
+            "invocationArgsMatch": 0,
+            "invocationTypeMatch": 0
+        })
+    else:
+        best_match = max(invocation_matches, key=lambda x: int("".join(map(str, x.values())), 2))
+        scores.update(best_match)
 
     # TODO Other options to consider if needed
     # - Record if, after ignoring invocations to getters, setters and assertions, only the invocation to the production method remains (VERY unlikely, so not really important)
